@@ -1,0 +1,114 @@
+{
+  "name": "alchemist",
+  "displayName": "ALchemist",
+  "description": "Quokka-style live execution and inline feedback for AL (Business Central)",
+  "version": "0.1.0",
+  "publisher": "alchemist",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TODO/alchemist"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Testing", "Debuggers", "Other"],
+  "keywords": ["AL", "Business Central", "Dynamics 365", "test runner", "live coding"],
+  "activationEvents": ["onLanguage:al"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "alchemist.newScratchFile", "title": "ALchemist: New Scratch File" },
+      { "command": "alchemist.toggleProjectContext", "title": "ALchemist: Toggle Project Context" },
+      { "command": "alchemist.deleteScratchFile", "title": "ALchemist: Delete Scratch File" },
+      { "command": "alchemist.saveScratchAs", "title": "ALchemist: Save Scratch As..." },
+      { "command": "alchemist.runNow", "title": "ALchemist: Run Now" },
+      { "command": "alchemist.stopRun", "title": "ALchemist: Stop Run" },
+      { "command": "alchemist.clearDecorations", "title": "ALchemist: Clear Results" },
+      { "command": "alchemist.showOutput", "title": "ALchemist: Show Output" }
+    ],
+    "keybindings": [
+      { "command": "alchemist.newScratchFile", "key": "ctrl+shift+a n" },
+      { "command": "alchemist.runNow", "key": "ctrl+shift+a r" },
+      { "command": "alchemist.clearDecorations", "key": "ctrl+shift+a c" }
+    ],
+    "configuration": {
+      "title": "ALchemist",
+      "properties": {
+        "alchemist.alRunnerPath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom path to al-runner binary. Leave empty for auto-managed."
+        },
+        "alchemist.dotnetPath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom path to dotnet SDK."
+        },
+        "alchemist.runOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Execute automatically on file save."
+        },
+        "alchemist.testRunOnSave": {
+          "type": "string",
+          "enum": ["current", "all", "off"],
+          "default": "current",
+          "description": "Which tests to run on save."
+        },
+        "alchemist.showOutputOnError": {
+          "type": "string",
+          "enum": ["always", "never", "onlyOnFailure"],
+          "default": "onlyOnFailure",
+          "description": "When to auto-focus the output panel."
+        },
+        "alchemist.showInlineMessages": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Message()/Error() output inline in the editor."
+        },
+        "alchemist.showGutterCoverage": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show coverage gutter indicators."
+        },
+        "alchemist.showHitCounts": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show hit counts on repeated lines (requires AL.Runner API \u2014 Phase 2)."
+        },
+        "alchemist.dimUncoveredLines": {
+          "type": "boolean",
+          "default": true,
+          "description": "Reduce opacity of lines not reached."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "test-compile": "tsc -p ./tsconfig.json",
+    "test": "npm run test-compile && node ./out/test/runTest.js",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.5.11"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^25.6.0",
+    "@types/sinon": "^21.0.1",
+    "@types/vscode": "^1.115.0",
+    "@vscode/test-electron": "^2.5.2",
+    "glob": "^13.0.6",
+    "mocha": "^11.7.5",
+    "sinon": "^21.1.0",
+    "ts-loader": "^9.5.7",
+    "typescript": "^6.0.2",
+    "webpack": "^5.106.1",
+    "webpack-cli": "^7.0.2"
+  }
+}
