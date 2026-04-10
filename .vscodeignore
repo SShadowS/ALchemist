@@ -3,7 +3,9 @@ src/**
 test/**
 out/**
 node_modules/**
+docs/**
 .gitignore
 webpack.config.js
 tsconfig.json
+tsconfig.build.json
 **/*.map

@@ -3,3 +3,5 @@ out/
 dist/
 *.vsix
 .superpowers/
+.vscode-test/
+*.tsbuildinfo
