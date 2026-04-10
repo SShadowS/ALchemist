@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { ExecutionResult, CoverageEntry } from '../runner/outputParser';
+import { ExecutionResult, CoverageEntry, CapturedValue } from '../runner/outputParser';
 
 export class DecorationManager {
   private readonly coveredDecorationType: vscode.TextEditorDecorationType;
   private readonly uncoveredDecorationType: vscode.TextEditorDecorationType;
   private readonly errorLineDecorationType: vscode.TextEditorDecorationType;
+  private readonly capturedValueDecorationType: vscode.TextEditorDecorationType;
   private readonly dimmedDecorationType: vscode.TextEditorDecorationType;
   private readonly messageDecorationType: vscode.TextEditorDecorationType;
   private readonly errorMessageDecorationType: vscode.TextEditorDecorationType;
@@ -27,6 +28,14 @@ export class DecorationManager {
     this.errorLineDecorationType = vscode.window.createTextEditorDecorationType({
       gutterIconPath: path.join(extensionPath, 'resources', 'gutter-red.svg'),
       gutterIconSize: 'contain',
+    });
+
+    this.capturedValueDecorationType = vscode.window.createTextEditorDecorationType({
+      after: {
+        color: '#9cdcfe',
+        margin: '0 0 0 16px',
+        fontStyle: 'italic',
+      },
     });
 
     this.dimmedDecorationType = vscode.window.createTextEditorDecorationType({
@@ -70,12 +79,18 @@ export class DecorationManager {
     if (config.get<boolean>('showInlineMessages', true)) {
       this.applyInlineErrors(editor, result);
     }
+
+    // Apply captured variable values
+    if (result.capturedValues.length > 0) {
+      this.applyInlineCapturedValues(editor, result.capturedValues, result.coverage, workspacePath);
+    }
   }
 
   clearDecorations(editor: vscode.TextEditor): void {
     editor.setDecorations(this.coveredDecorationType, []);
     editor.setDecorations(this.uncoveredDecorationType, []);
     editor.setDecorations(this.errorLineDecorationType, []);
+    editor.setDecorations(this.capturedValueDecorationType, []);
     editor.setDecorations(this.dimmedDecorationType, []);
     editor.setDecorations(this.messageDecorationType, []);
     editor.setDecorations(this.errorMessageDecorationType, []);
@@ -141,23 +156,31 @@ export class DecorationManager {
 
     for (const test of result.tests) {
       if (test.status === 'failed' && test.message) {
-        // Try to find AL line reference in stack trace
-        const fullText = [test.message, test.stackTrace || ''].join('\n');
-        const match = fullText.match(alLineRegex);
-        if (match) {
-          const lineNumber = parseInt(match[1], 10) - 1;
-          if (lineNumber >= 0 && lineNumber < editor.document.lineCount) {
-            const range = editor.document.lineAt(lineNumber).range;
-            errorDecorations.push({
-              range,
-              renderOptions: {
-                after: { contentText: `  \u2717 ${test.message}` },
-              },
-            });
+        let lineNumber: number | undefined;
 
-            // Also set red gutter for this line
-            editor.setDecorations(this.errorLineDecorationType, [{ range: new vscode.Range(lineNumber, 0, lineNumber, 0) }]);
+        // Prefer alSourceLine from JSON output (exact mapping)
+        if (test.alSourceLine !== undefined) {
+          lineNumber = test.alSourceLine - 1; // Convert to 0-based
+        } else {
+          // Fallback: parse from stack trace
+          const fullText = [test.message, test.stackTrace || ''].join('\n');
+          const match = fullText.match(alLineRegex);
+          if (match) {
+            lineNumber = parseInt(match[1], 10) - 1;
           }
+        }
+
+        if (lineNumber !== undefined && lineNumber >= 0 && lineNumber < editor.document.lineCount) {
+          const range = editor.document.lineAt(lineNumber).range;
+          errorDecorations.push({
+            range,
+            renderOptions: {
+              after: { contentText: `  \u2717 ${test.message}` },
+            },
+          });
+
+          // Also set red gutter for this line
+          editor.setDecorations(this.errorLineDecorationType, [{ range: new vscode.Range(lineNumber, 0, lineNumber, 0) }]);
         }
       }
     }
@@ -171,26 +194,90 @@ export class DecorationManager {
   }
 
   private applyInlineMessages(editor: vscode.TextEditor, messages: string[]): void {
-    // Best-effort: match Message() calls in source to output by order of appearance
-    const messageDecorations: vscode.DecorationOptions[] = [];
+    // Find all Message() call line numbers in order
     const messageCallRegex = /\bMessage\s*\(/i;
-    let messageIndex = 0;
+    const callLines: number[] = [];
 
-    for (let i = 0; i < editor.document.lineCount && messageIndex < messages.length; i++) {
-      const lineText = editor.document.lineAt(i).text;
-      if (messageCallRegex.test(lineText)) {
-        const range = editor.document.lineAt(i).range;
-        messageDecorations.push({
-          range,
-          renderOptions: {
-            after: { contentText: `  \u2192 ${messages[messageIndex]}` },
-          },
-        });
-        messageIndex++;
+    for (let i = 0; i < editor.document.lineCount; i++) {
+      if (messageCallRegex.test(editor.document.lineAt(i).text)) {
+        callLines.push(i);
       }
     }
 
+    if (callLines.length === 0 || messages.length === 0) return;
+
+    // Match from both ends: first call → first output, last call → last output
+    // Middle calls get the next output after the first
+    const messageDecorations: vscode.DecorationOptions[] = [];
+    const callToMessage = new Map<number, string>();
+
+    if (callLines.length === 1) {
+      // Single call gets first output
+      callToMessage.set(callLines[0], messages[0]);
+    } else {
+      // First call → first output
+      callToMessage.set(callLines[0], messages[0]);
+      // Last call → last output
+      callToMessage.set(callLines[callLines.length - 1], messages[messages.length - 1]);
+      // Middle calls → distribute remaining outputs from position 1
+      let msgIdx = 1;
+      for (let c = 1; c < callLines.length - 1 && msgIdx < messages.length - 1; c++) {
+        callToMessage.set(callLines[c], messages[msgIdx]);
+        msgIdx++;
+      }
+    }
+
+    for (const [lineIdx, msg] of callToMessage) {
+      const range = editor.document.lineAt(lineIdx).range;
+      messageDecorations.push({
+        range,
+        renderOptions: {
+          after: { contentText: `  \u2192 ${msg}` },
+        },
+      });
+    }
+
     editor.setDecorations(this.messageDecorationType, messageDecorations);
+  }
+
+  private applyInlineCapturedValues(editor: vscode.TextEditor, capturedValues: CapturedValue[], coverage: CoverageEntry[], workspacePath: string): void {
+    if (capturedValues.length === 0) return;
+
+    // Group captured values by statementId, keeping only the last value per variable per statement
+    const lastValues = new Map<string, CapturedValue>();
+    for (const cv of capturedValues) {
+      const key = `${cv.statementId}:${cv.variableName}`;
+      lastValues.set(key, cv);
+    }
+
+    // Find coverage entry for this file to map statementIds to line numbers
+    const filePath = editor.document.uri.fsPath;
+    const entry = this.findCoverageForFile(coverage, filePath, workspacePath);
+    if (!entry || entry.lines.length === 0) return;
+
+    // statementIds are sequential per scope — map them to coverage line numbers in order
+    const coveredLines = entry.lines
+      .filter(l => l.hits > 0)
+      .sort((a, b) => a.number - b.number);
+
+    const decorations: vscode.DecorationOptions[] = [];
+
+    for (const cv of lastValues.values()) {
+      // Map statementId to a covered line (best effort: statementId as index into covered lines)
+      if (cv.statementId >= 0 && cv.statementId < coveredLines.length) {
+        const lineNumber = coveredLines[cv.statementId].number - 1;
+        if (lineNumber >= 0 && lineNumber < editor.document.lineCount) {
+          decorations.push({
+            range: editor.document.lineAt(lineNumber).range,
+            renderOptions: {
+              after: { contentText: `  ${cv.variableName} = ${cv.value}` },
+            },
+          });
+        }
+      }
+    }
+
+    editor.setDecorations(this.capturedValueDecorationType, decorations);
   }
 
   private findCoverageForFile(coverage: CoverageEntry[], filePath: string, workspacePath: string): CoverageEntry | undefined {
@@ -205,6 +292,7 @@ export class DecorationManager {
     this.coveredDecorationType.dispose();
     this.uncoveredDecorationType.dispose();
     this.errorLineDecorationType.dispose();
+    this.capturedValueDecorationType.dispose();
     this.dimmedDecorationType.dispose();
     this.messageDecorationType.dispose();
     this.errorMessageDecorationType.dispose();
