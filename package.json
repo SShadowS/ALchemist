@@ -10,27 +10,74 @@
     "url": "https://github.com/TODO/alchemist"
   },
   "engines": {
-    "vscode": "^1.115.0"
+    "vscode": "^1.85.0"
   },
-  "categories": ["Testing", "Debuggers", "Other"],
-  "keywords": ["AL", "Business Central", "Dynamics 365", "test runner", "live coding"],
-  "activationEvents": ["onLanguage:al"],
+  "categories": [
+    "Testing",
+    "Debuggers",
+    "Other"
+  ],
+  "keywords": [
+    "AL",
+    "Business Central",
+    "Dynamics 365",
+    "test runner",
+    "live coding"
+  ],
+  "activationEvents": [
+    "onLanguage:al",
+    "onCommand:alchemist.newScratchFile",
+    "onCommand:alchemist.runNow"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
-      { "command": "alchemist.newScratchFile", "title": "ALchemist: New Scratch File" },
-      { "command": "alchemist.toggleProjectContext", "title": "ALchemist: Toggle Project Context" },
-      { "command": "alchemist.deleteScratchFile", "title": "ALchemist: Delete Scratch File" },
-      { "command": "alchemist.saveScratchAs", "title": "ALchemist: Save Scratch As..." },
-      { "command": "alchemist.runNow", "title": "ALchemist: Run Now" },
-      { "command": "alchemist.stopRun", "title": "ALchemist: Stop Run" },
-      { "command": "alchemist.clearDecorations", "title": "ALchemist: Clear Results" },
-      { "command": "alchemist.showOutput", "title": "ALchemist: Show Output" }
+      {
+        "command": "alchemist.newScratchFile",
+        "title": "ALchemist: New Scratch File"
+      },
+      {
+        "command": "alchemist.toggleProjectContext",
+        "title": "ALchemist: Toggle Project Context"
+      },
+      {
+        "command": "alchemist.deleteScratchFile",
+        "title": "ALchemist: Delete Scratch File"
+      },
+      {
+        "command": "alchemist.saveScratchAs",
+        "title": "ALchemist: Save Scratch As..."
+      },
+      {
+        "command": "alchemist.runNow",
+        "title": "ALchemist: Run Now"
+      },
+      {
+        "command": "alchemist.stopRun",
+        "title": "ALchemist: Stop Run"
+      },
+      {
+        "command": "alchemist.clearDecorations",
+        "title": "ALchemist: Clear Results"
+      },
+      {
+        "command": "alchemist.showOutput",
+        "title": "ALchemist: Show Output"
+      }
     ],
     "keybindings": [
-      { "command": "alchemist.newScratchFile", "key": "ctrl+shift+a n" },
-      { "command": "alchemist.runNow", "key": "ctrl+shift+a r" },
-      { "command": "alchemist.clearDecorations", "key": "ctrl+shift+a c" }
+      {
+        "command": "alchemist.newScratchFile",
+        "key": "ctrl+shift+a n"
+      },
+      {
+        "command": "alchemist.runNow",
+        "key": "ctrl+shift+a r"
+      },
+      {
+        "command": "alchemist.clearDecorations",
+        "key": "ctrl+shift+a c"
+      }
     ],
     "configuration": {
       "title": "ALchemist",
@@ -52,13 +99,21 @@
         },
         "alchemist.testRunOnSave": {
           "type": "string",
-          "enum": ["current", "all", "off"],
+          "enum": [
+            "current",
+            "all",
+            "off"
+          ],
           "default": "current",
           "description": "Which tests to run on save."
         },
         "alchemist.showOutputOnError": {
           "type": "string",
-          "enum": ["always", "never", "onlyOnFailure"],
+          "enum": [
+            "always",
+            "never",
+            "onlyOnFailure"
+          ],
           "default": "onlyOnFailure",
           "description": "When to auto-focus the output panel."
         },
@@ -75,12 +130,17 @@
         "alchemist.showHitCounts": {
           "type": "boolean",
           "default": true,
-          "description": "Show hit counts on repeated lines (requires AL.Runner API \u2014 Phase 2)."
+          "description": "Show hit counts on repeated lines (requires AL.Runner API — Phase 2)."
         },
         "alchemist.dimUncoveredLines": {
           "type": "boolean",
           "default": true,
           "description": "Reduce opacity of lines not reached."
+        },
+        "alchemist.showCapturedValues": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show captured variable values inline."
         }
       }
     }
@@ -101,7 +161,7 @@
     "@types/mocha": "^10.0.10",
     "@types/node": "^25.6.0",
     "@types/sinon": "^21.0.1",
-    "@types/vscode": "^1.115.0",
+    "@types/vscode": "^1.85.0",
     "@vscode/test-electron": "^2.5.2",
     "glob": "^13.0.6",
     "mocha": "^11.7.5",

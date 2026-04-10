@@ -61,6 +61,9 @@ export class AlchemistTestController {
         run.passed(item, testResult.durationMs);
       } else if (testResult.status === 'failed') {
         const message = new vscode.TestMessage(testResult.message || 'Test failed');
+        if (testResult.alSourceLine && item.uri) {
+          message.location = new vscode.Location(item.uri, new vscode.Position(testResult.alSourceLine - 1, 0));
+        }
         run.failed(item, message, testResult.durationMs);
       } else {
         const message = new vscode.TestMessage(testResult.message || 'Test errored');
@@ -77,7 +80,16 @@ export class AlchemistTestController {
 
     token.onCancellationRequested(() => this.executor.cancel());
 
-    await this.executor.execute('test', workspaceFolder.uri.fsPath, workspaceFolder.uri.fsPath);
+    if (request.include && request.include.length > 0) {
+      // Run individual tests via --run
+      for (const item of request.include) {
+        // Test items use the test procedure name as their label
+        await this.executor.execute('test', workspaceFolder.uri.fsPath, workspaceFolder.uri.fsPath, item.label);
+      }
+    } else {
+      // Run all tests
+      await this.executor.execute('test', workspaceFolder.uri.fsPath, workspaceFolder.uri.fsPath);
+    }
   }
 
   dispose(): void {
