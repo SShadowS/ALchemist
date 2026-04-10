@@ -1,1 +1,3 @@
 ui: tdd
+require:
+  - test/__mocks__/register.js
