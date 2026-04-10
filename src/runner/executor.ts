@@ -3,7 +3,7 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AlRunnerManager } from './alRunnerManager';
-import { parseTestOutput, parseCoberturaXml, ExecutionResult } from './outputParser';
+import { parseTestOutput, parseJsonOutput, parseCoberturaXml, ExecutionResult } from './outputParser';
 
 export type ExecutionMode = 'scratch-standalone' | 'scratch-project' | 'test';
 
@@ -17,7 +17,7 @@ export class Executor {
 
   constructor(private readonly runnerManager: AlRunnerManager) {}
 
-  async execute(mode: ExecutionMode, filePath: string, workspacePath?: string): Promise<void> {
+  async execute(mode: ExecutionMode, filePath: string, workspacePath?: string, procedureName?: string): Promise<void> {
     const runnerPath = this.runnerManager.getPath();
     if (!runnerPath) {
       vscode.window.showErrorMessage('AL.Runner not found. Run "ALchemist: Run Now" to trigger installation.');
@@ -28,7 +28,7 @@ export class Executor {
     this.onDidStartRun.fire(mode);
 
     const startTime = Date.now();
-    const { args, cwd } = this.buildArgs(mode, filePath, workspacePath);
+    const { args, cwd } = this.buildArgs(mode, filePath, workspacePath, procedureName);
 
     try {
       const { stdout, stderr, exitCode } = await this.spawn(runnerPath, args, cwd);
@@ -39,22 +39,39 @@ export class Executor {
         fs.unlinkSync(coberturaPath); // Clean up after reading
       }
 
-      const { tests, messages, summary } = parseTestOutput(stdout);
       const coverage = parseCoberturaXml(coverageXml);
       const stderrLines = stderr.split('\n').filter((l) => l.trim().length > 0);
 
-      const result: ExecutionResult = {
-        mode: mode === 'test' ? 'test' : 'scratch',
-        tests,
-        messages,
-        stderrOutput: stderrLines,
-        summary,
-        coverage,
-        exitCode,
-        durationMs: Date.now() - startTime,
-        capturedValues: [],
-        cached: false,
-      };
+      let result: ExecutionResult;
+      if (mode === 'scratch-standalone') {
+        const { tests, messages, summary } = parseTestOutput(stdout);
+        result = {
+          mode: 'scratch',
+          tests,
+          messages,
+          stderrOutput: stderrLines,
+          summary,
+          coverage,
+          exitCode,
+          durationMs: Date.now() - startTime,
+          capturedValues: [],
+          cached: false,
+        };
+      } else {
+        const jsonResult = parseJsonOutput(stdout);
+        result = {
+          mode: mode === 'test' ? 'test' : 'scratch',
+          tests: jsonResult.tests,
+          messages: jsonResult.messages,
+          stderrOutput: stderrLines,
+          summary: jsonResult.summary,
+          coverage,
+          exitCode,
+          durationMs: Date.now() - startTime,
+          capturedValues: jsonResult.capturedValues,
+          cached: jsonResult.cached,
+        };
+      }
 
       this.onDidFinishRun.fire(result);
     } catch (err: any) {
@@ -81,7 +98,7 @@ export class Executor {
     }
   }
 
-  private buildArgs(mode: ExecutionMode, filePath: string, workspacePath?: string): { args: string[]; cwd: string } {
+  private buildArgs(mode: ExecutionMode, filePath: string, workspacePath?: string, procedureName?: string): { args: string[]; cwd: string } {
     switch (mode) {
       case 'scratch-standalone':
         return {
@@ -91,16 +108,17 @@ export class Executor {
       case 'scratch-project': {
         const srcPath = workspacePath || path.dirname(filePath);
         return {
-          args: ['--coverage', srcPath, filePath],
+          args: ['--output-json', '--coverage', srcPath, filePath],
           cwd: srcPath,
         };
       }
       case 'test': {
         const cwd = workspacePath || path.dirname(filePath);
-        return {
-          args: ['--coverage', cwd],
-          cwd,
-        };
+        const args = ['--output-json', '--capture-values', '--coverage', cwd];
+        if (procedureName) {
+          args.splice(args.length - 1, 0, '--run', procedureName);
+        }
+        return { args, cwd };
       }
     }
   }
