@@ -1,3 +1,5 @@
+import { XMLParser } from 'fast-xml-parser';
+
 export interface TestResult {
   name: string;
   status: 'passed' | 'failed' | 'errored';
@@ -127,4 +129,54 @@ function collectIndentedBlock(lines: string[], startIndex: number): { message: s
   const message = detailLines[0] || '';
   const stackTrace = detailLines.slice(1).join('\n');
   return { message, stackTrace, nextIndex: i };
+}
+
+export function parseCoberturaXml(xml: string): CoverageEntry[] {
+  if (!xml || xml.trim().length === 0) { return []; }
+
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '@_',
+    isArray: (name) => name === 'class' || name === 'line' || name === 'package',
+  });
+
+  let parsed: any;
+  try {
+    parsed = parser.parse(xml);
+  } catch {
+    return [];
+  }
+
+  const packages = parsed?.coverage?.packages?.package;
+  if (!packages) { return []; }
+
+  const entries: CoverageEntry[] = [];
+
+  for (const pkg of Array.isArray(packages) ? packages : [packages]) {
+    const classes = pkg?.classes?.class;
+    if (!classes) { continue; }
+
+    for (const cls of Array.isArray(classes) ? classes : [classes]) {
+      const lines = cls?.lines?.line;
+      const parsedLines: Array<{ number: number; hits: number }> = [];
+
+      if (lines) {
+        for (const line of Array.isArray(lines) ? lines : [lines]) {
+          parsedLines.push({
+            number: parseInt(line['@_number'], 10),
+            hits: parseInt(line['@_hits'], 10),
+          });
+        }
+      }
+
+      entries.push({
+        className: cls['@_name'] || '',
+        filename: cls['@_filename'] || '',
+        lineRate: parseFloat(cls['@_line-rate'] || '0'),
+        lines: parsedLines,
+      });
+    }
+  }
+
+  return entries;
 }

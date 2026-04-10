@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { parseTestOutput, parseRunSummary } from '../../src/runner/outputParser';
+import { parseTestOutput, parseRunSummary, parseCoberturaXml } from '../../src/runner/outputParser';
 
 suite('OutputParser', () => {
   suite('parseTestOutput', () => {
@@ -86,5 +86,73 @@ suite('OutputParser', () => {
       const summary = parseRunSummary('PASS  TestA (1ms)');
       assert.strictEqual(summary, undefined);
     });
+  });
+});
+
+suite('parseCoberturaXml', () => {
+  test('parses coverage entries from XML', () => {
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+<coverage line-rate="0.7143" lines-covered="5" lines-valid="7" version="1.0" timestamp="1712764800">
+  <sources><source>.</source></sources>
+  <packages>
+    <package name="al-source" line-rate="0.7143">
+      <classes>
+        <class name="Calculator" filename="src/Calculator.al" line-rate="1.0000">
+          <lines>
+            <line number="5" hits="1" />
+            <line number="6" hits="1" />
+            <line number="7" hits="1" />
+          </lines>
+        </class>
+        <class name="Validator" filename="src/Validator.al" line-rate="0.5000">
+          <lines>
+            <line number="3" hits="1" />
+            <line number="4" hits="0" />
+          </lines>
+        </class>
+      </classes>
+    </package>
+  </packages>
+</coverage>`;
+
+    const entries = parseCoberturaXml(xml);
+    assert.strictEqual(entries.length, 2);
+
+    assert.strictEqual(entries[0].className, 'Calculator');
+    assert.strictEqual(entries[0].filename, 'src/Calculator.al');
+    assert.strictEqual(entries[0].lines.length, 3);
+    assert.deepStrictEqual(entries[0].lines[0], { number: 5, hits: 1 });
+
+    assert.strictEqual(entries[1].className, 'Validator');
+    assert.strictEqual(entries[1].lines.length, 2);
+    assert.deepStrictEqual(entries[1].lines[1], { number: 4, hits: 0 });
+  });
+
+  test('handles missing coverage XML gracefully', () => {
+    const entries = parseCoberturaXml('');
+    assert.strictEqual(entries.length, 0);
+  });
+
+  test('handles single class (non-array)', () => {
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+<coverage line-rate="1.0" lines-covered="2" lines-valid="2" version="1.0" timestamp="1712764800">
+  <sources><source>.</source></sources>
+  <packages>
+    <package name="al-source" line-rate="1.0">
+      <classes>
+        <class name="OnlyOne" filename="src/OnlyOne.al" line-rate="1.0">
+          <lines>
+            <line number="1" hits="1" />
+            <line number="2" hits="1" />
+          </lines>
+        </class>
+      </classes>
+    </package>
+  </packages>
+</coverage>`;
+
+    const entries = parseCoberturaXml(xml);
+    assert.strictEqual(entries.length, 1);
+    assert.strictEqual(entries[0].className, 'OnlyOne');
   });
 });
