@@ -10,7 +10,7 @@
     "url": "https://github.com/TODO/alchemist"
   },
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.115.0"
   },
   "categories": ["Testing", "Debuggers", "Other"],
   "keywords": ["AL", "Business Central", "Dynamics 365", "test runner", "live coding"],

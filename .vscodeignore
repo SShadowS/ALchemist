@@ -4,7 +4,9 @@ test/**
 out/**
 node_modules/**
 docs/**
+.superpowers/**
 .gitignore
+.mocharc.yml
 webpack.config.js
 tsconfig.json
 tsconfig.build.json
