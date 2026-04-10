@@ -6,6 +6,14 @@ export interface TestResult {
   durationMs: number | undefined;
   message: string | undefined;
   stackTrace: string | undefined;
+  alSourceLine: number | undefined;  // 1-based line in AL source
+}
+
+export interface CapturedValue {
+  scopeName: string;
+  variableName: string;
+  value: string;
+  statementId: number;
 }
 
 export interface CoverageEntry {
@@ -31,6 +39,8 @@ export interface ExecutionResult {
   coverage: CoverageEntry[];
   exitCode: number;
   durationMs: number;
+  capturedValues: CapturedValue[];
+  cached: boolean;
 }
 
 const PASS_REGEX = /^PASS\s{2}(\S+)\s+\((\d+)ms\)$/;
@@ -68,6 +78,7 @@ export function parseTestOutput(stdout: string): { tests: TestResult[]; messages
         durationMs: parseInt(passMatch[2], 10),
         message: undefined,
         stackTrace: undefined,
+        alSourceLine: undefined,
       });
       i++;
       continue;
@@ -82,6 +93,7 @@ export function parseTestOutput(stdout: string): { tests: TestResult[]; messages
         durationMs: undefined,
         message,
         stackTrace,
+        alSourceLine: undefined,
       });
       i = nextIndex;
       continue;
@@ -96,6 +108,7 @@ export function parseTestOutput(stdout: string): { tests: TestResult[]; messages
         durationMs: undefined,
         message,
         stackTrace,
+        alSourceLine: undefined,
       });
       i = nextIndex;
       continue;
@@ -117,6 +130,53 @@ export function parseTestOutput(stdout: string): { tests: TestResult[]; messages
   }
 
   return { tests, messages, summary };
+}
+
+export function parseJsonOutput(json: string): {
+  tests: TestResult[];
+  messages: string[];
+  summary: RunSummary;
+  capturedValues: CapturedValue[];
+  cached: boolean;
+} {
+  const data = JSON.parse(json);
+
+  const statusMap: Record<string, 'passed' | 'failed' | 'errored'> = {
+    pass: 'passed',
+    fail: 'failed',
+    error: 'errored',
+  };
+
+  const tests: TestResult[] = (data.tests || []).map((t: any) => ({
+    name: t.name,
+    status: statusMap[t.status] || 'errored',
+    durationMs: t.durationMs ?? undefined,
+    message: t.message ?? undefined,
+    stackTrace: t.stackTrace ?? undefined,
+    alSourceLine: t.alSourceLine ?? undefined,
+  }));
+
+  const summary: RunSummary = {
+    passed: data.passed ?? 0,
+    failed: data.failed ?? 0,
+    errors: data.errors ?? 0,
+    total: data.total ?? 0,
+  };
+
+  const capturedValues: CapturedValue[] = (data.capturedValues || []).map((v: any) => ({
+    scopeName: v.scopeName,
+    variableName: v.variableName,
+    value: v.value ?? '',
+    statementId: v.statementId,
+  }));
+
+  return {
+    tests,
+    messages: [], // JSON mode doesn't capture Message() output
+    summary,
+    capturedValues,
+    cached: data.cached ?? false,
+  };
 }
 
 function collectIndentedBlock(lines: string[], startIndex: number): { message: string; stackTrace: string; nextIndex: number } {

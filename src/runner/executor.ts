@@ -52,6 +52,8 @@ export class Executor {
         coverage,
         exitCode,
         durationMs: Date.now() - startTime,
+        capturedValues: [],
+        cached: false,
       };
 
       this.onDidFinishRun.fire(result);
@@ -65,6 +67,8 @@ export class Executor {
         coverage: [],
         exitCode: 1,
         durationMs: Date.now() - startTime,
+        capturedValues: [],
+        cached: false,
       };
       this.onDidFinishRun.fire(result);
     }
@@ -81,7 +85,7 @@ export class Executor {
     switch (mode) {
       case 'scratch-standalone':
         return {
-          args: ['-e', fs.readFileSync(filePath, 'utf-8')],
+          args: [filePath],
           cwd: path.dirname(filePath),
         };
       case 'scratch-project': {

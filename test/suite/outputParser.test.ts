@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { parseTestOutput, parseRunSummary, parseCoberturaXml } from '../../src/runner/outputParser';
+import { parseTestOutput, parseRunSummary, parseCoberturaXml, parseJsonOutput } from '../../src/runner/outputParser';
 
 suite('OutputParser', () => {
   suite('parseTestOutput', () => {
@@ -154,5 +154,95 @@ suite('parseCoberturaXml', () => {
     const entries = parseCoberturaXml(xml);
     assert.strictEqual(entries.length, 1);
     assert.strictEqual(entries[0].className, 'OnlyOne');
+  });
+});
+
+suite('parseJsonOutput', () => {
+  test('parses JSON with passing tests', () => {
+    const json = JSON.stringify({
+      tests: [
+        { name: 'TestCalc', status: 'pass', durationMs: 5, message: null, stackTrace: null, alSourceLine: null }
+      ],
+      passed: 1, failed: 0, errors: 0, total: 1, exitCode: 0
+    });
+    const result = parseJsonOutput(json);
+    assert.strictEqual(result.tests.length, 1);
+    assert.strictEqual(result.tests[0].name, 'TestCalc');
+    assert.strictEqual(result.tests[0].status, 'passed');
+    assert.strictEqual(result.tests[0].durationMs, 5);
+    assert.strictEqual(result.tests[0].alSourceLine, undefined);
+  });
+
+  test('parses JSON with failing test and alSourceLine', () => {
+    const json = JSON.stringify({
+      tests: [
+        { name: 'TestFail', status: 'fail', durationMs: 3, message: 'Assert failed', stackTrace: 'at Foo()', alSourceLine: 42 }
+      ],
+      passed: 0, failed: 1, errors: 0, total: 1, exitCode: 1
+    });
+    const result = parseJsonOutput(json);
+    assert.strictEqual(result.tests[0].status, 'failed');
+    assert.strictEqual(result.tests[0].message, 'Assert failed');
+    assert.strictEqual(result.tests[0].alSourceLine, 42);
+  });
+
+  test('parses JSON with errored test', () => {
+    const json = JSON.stringify({
+      tests: [
+        { name: 'TestErr', status: 'error', durationMs: 1, message: 'NotSupported', stackTrace: null, alSourceLine: null }
+      ],
+      passed: 0, failed: 0, errors: 1, total: 1, exitCode: 1
+    });
+    const result = parseJsonOutput(json);
+    assert.strictEqual(result.tests[0].status, 'errored');
+  });
+
+  test('parses capturedValues', () => {
+    const json = JSON.stringify({
+      tests: [{ name: 'Test', status: 'pass', durationMs: 1 }],
+      passed: 1, failed: 0, errors: 0, total: 1, exitCode: 0,
+      capturedValues: [
+        { scopeName: 'TestCalc', variableName: 'Result', value: '121.00', statementId: 3 },
+        { scopeName: 'TestCalc', variableName: 'Rate', value: '0.21', statementId: 2 }
+      ]
+    });
+    const result = parseJsonOutput(json);
+    assert.strictEqual(result.capturedValues.length, 2);
+    assert.strictEqual(result.capturedValues[0].variableName, 'Result');
+    assert.strictEqual(result.capturedValues[0].value, '121.00');
+    assert.strictEqual(result.capturedValues[1].statementId, 2);
+  });
+
+  test('handles cached field', () => {
+    const json = JSON.stringify({
+      tests: [{ name: 'Test', status: 'pass', durationMs: 0 }],
+      passed: 1, failed: 0, errors: 0, total: 1, exitCode: 0,
+      cached: true
+    });
+    const result = parseJsonOutput(json);
+    assert.strictEqual(result.cached, true);
+  });
+
+  test('handles missing optional fields gracefully', () => {
+    const json = JSON.stringify({
+      tests: [{ name: 'Test', status: 'pass', durationMs: 1 }],
+      passed: 1, failed: 0, errors: 0, total: 1, exitCode: 0
+    });
+    const result = parseJsonOutput(json);
+    assert.strictEqual(result.capturedValues.length, 0);
+    assert.strictEqual(result.cached, false);
+    assert.strictEqual(result.tests[0].alSourceLine, undefined);
+  });
+
+  test('parses summary correctly', () => {
+    const json = JSON.stringify({
+      tests: [
+        { name: 'A', status: 'pass', durationMs: 1 },
+        { name: 'B', status: 'fail', durationMs: 2, message: 'err' },
+      ],
+      passed: 1, failed: 1, errors: 0, total: 2, exitCode: 1
+    });
+    const result = parseJsonOutput(json);
+    assert.deepStrictEqual(result.summary, { passed: 1, failed: 1, errors: 0, total: 2 });
   });
 });
