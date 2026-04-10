@@ -139,7 +139,11 @@ export function parseJsonOutput(json: string): {
   capturedValues: CapturedValue[];
   cached: boolean;
 } {
-  const data = JSON.parse(json);
+  // AL.Runner may output bare text (Message(), Timing) before the JSON object.
+  // Extract the JSON portion by finding the last top-level { ... } block.
+  const jsonStart = json.lastIndexOf('\n{');
+  const jsonStr = jsonStart >= 0 ? json.substring(jsonStart + 1) : json;
+  const data = JSON.parse(jsonStr);
 
   const statusMap: Record<string, 'passed' | 'failed' | 'errored'> = {
     pass: 'passed',
