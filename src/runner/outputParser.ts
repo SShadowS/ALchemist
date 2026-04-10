@@ -172,7 +172,7 @@ export function parseJsonOutput(json: string): {
 
   return {
     tests,
-    messages: [], // JSON mode doesn't capture Message() output
+    messages: data.messages || [],
     summary,
     capturedValues,
     cached: data.cached ?? false,

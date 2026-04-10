@@ -3,7 +3,7 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AlRunnerManager } from './alRunnerManager';
-import { parseTestOutput, parseJsonOutput, parseCoberturaXml, ExecutionResult } from './outputParser';
+import { parseJsonOutput, parseCoberturaXml, ExecutionResult } from './outputParser';
 
 export type ExecutionMode = 'scratch-standalone' | 'scratch-project' | 'test';
 
@@ -42,36 +42,20 @@ export class Executor {
       const coverage = parseCoberturaXml(coverageXml);
       const stderrLines = stderr.split('\n').filter((l) => l.trim().length > 0);
 
-      let result: ExecutionResult;
-      if (mode === 'scratch-standalone') {
-        const { tests, messages, summary } = parseTestOutput(stdout);
-        result = {
-          mode: 'scratch',
-          tests,
-          messages,
-          stderrOutput: stderrLines,
-          summary,
-          coverage,
-          exitCode,
-          durationMs: Date.now() - startTime,
-          capturedValues: [],
-          cached: false,
-        };
-      } else {
-        const jsonResult = parseJsonOutput(stdout);
-        result = {
-          mode: mode === 'test' ? 'test' : 'scratch',
-          tests: jsonResult.tests,
-          messages: jsonResult.messages,
-          stderrOutput: stderrLines,
-          summary: jsonResult.summary,
-          coverage,
-          exitCode,
-          durationMs: Date.now() - startTime,
-          capturedValues: jsonResult.capturedValues,
-          cached: jsonResult.cached,
-        };
-      }
+      console.log('ALchemist: using JSON parser (--output-json)');
+      const jsonResult = parseJsonOutput(stdout);
+      const result: ExecutionResult = {
+        mode: mode === 'test' ? 'test' : 'scratch',
+        tests: jsonResult.tests,
+        messages: jsonResult.messages,
+        stderrOutput: stderrLines,
+        summary: jsonResult.summary,
+        coverage,
+        exitCode,
+        durationMs: Date.now() - startTime,
+        capturedValues: jsonResult.capturedValues,
+        cached: jsonResult.cached,
+      };
 
       this.onDidFinishRun.fire(result);
     } catch (err: any) {
@@ -102,7 +86,7 @@ export class Executor {
     switch (mode) {
       case 'scratch-standalone':
         return {
-          args: [filePath],
+          args: ['--output-json', filePath],
           cwd: path.dirname(filePath),
         };
       case 'scratch-project': {
