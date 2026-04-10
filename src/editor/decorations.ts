@@ -13,6 +13,8 @@ export class DecorationManager {
 
   // Track per-file line coverage for hover provider
   private lineCoverageMap = new Map<string, Map<number, { hits: number }>>();
+  // Track captured variable values for hover provider
+  private capturedValuesStore: CapturedValue[] = [];
 
   constructor(private readonly extensionPath: string) {
     this.coveredDecorationType = vscode.window.createTextEditorDecorationType({
@@ -80,7 +82,8 @@ export class DecorationManager {
       this.applyInlineErrors(editor, result);
     }
 
-    // Apply captured variable values
+    // Store and apply captured variable values
+    this.capturedValuesStore = result.capturedValues;
     if (result.capturedValues.length > 0) {
       this.applyInlineCapturedValues(editor, result.capturedValues, result.coverage, workspacePath);
     }
@@ -105,6 +108,10 @@ export class DecorationManager {
 
   getLineCoverage(filePath: string): Map<number, { hits: number }> | undefined {
     return this.lineCoverageMap.get(filePath);
+  }
+
+  getCapturedValues(): CapturedValue[] {
+    return this.capturedValuesStore;
   }
 
   private applyCoverageGutters(editor: vscode.TextEditor, coverage: CoverageEntry[], filePath: string, workspacePath: string): void {
