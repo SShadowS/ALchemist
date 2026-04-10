@@ -219,11 +219,18 @@ export class DecorationManager {
       callToMessage.set(callLines[0], messages[0]);
       // Last call → last output
       callToMessage.set(callLines[callLines.length - 1], messages[messages.length - 1]);
-      // Middle calls → distribute remaining outputs from position 1
-      let msgIdx = 1;
-      for (let c = 1; c < callLines.length - 1 && msgIdx < messages.length - 1; c++) {
-        callToMessage.set(callLines[c], messages[msgIdx]);
-        msgIdx++;
+      // Middle calls: divide remaining outputs (indices 1..N-2) evenly among middle calls,
+      // show the LAST output from each call's batch (e.g., last loop iteration)
+      const middleCalls = callLines.length - 2;
+      const middleMessages = messages.length - 2; // exclude first and last
+      if (middleCalls > 0 && middleMessages > 0) {
+        const batchSize = Math.floor(middleMessages / middleCalls);
+        for (let c = 0; c < middleCalls; c++) {
+          // Each middle call gets a batch; show the last message in its batch
+          const batchEnd = 1 + (c + 1) * batchSize - 1;
+          const msgIdx = Math.min(batchEnd, messages.length - 2);
+          callToMessage.set(callLines[c + 1], messages[msgIdx]);
+        }
       }
     }
 
