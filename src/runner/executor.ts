@@ -86,13 +86,13 @@ export class Executor {
     switch (mode) {
       case 'scratch-standalone':
         return {
-          args: ['--output-json', filePath],
+          args: ['--output-json', '--capture-values', filePath],
           cwd: path.dirname(filePath),
         };
       case 'scratch-project': {
         const srcPath = workspacePath || path.dirname(filePath);
         return {
-          args: ['--output-json', '--coverage', srcPath, filePath],
+          args: ['--output-json', '--capture-values', '--coverage', srcPath, filePath],
           cwd: srcPath,
         };
       }
