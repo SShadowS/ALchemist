@@ -194,6 +194,8 @@ export class DecorationManager {
   }
 
   private applyInlineMessages(editor: vscode.TextEditor, messages: string[]): void {
+    const MAX_INLINE_VALUES = 100;
+
     // Find all Message() call line numbers in order
     const messageCallRegex = /\bMessage\s*\(/i;
     const callLines: number[] = [];
@@ -206,40 +208,43 @@ export class DecorationManager {
 
     if (callLines.length === 0 || messages.length === 0) return;
 
-    // Match from both ends: first call → first output, last call → last output
-    // Middle calls get the next output after the first
-    const messageDecorations: vscode.DecorationOptions[] = [];
-    const callToMessage = new Map<number, string>();
+    // Distribute messages across calls: each call gets a batch.
+    // With N calls and M messages, divide M into N consecutive batches.
+    // Show ALL values from each batch space-separated (like Quokka).
+    const callToMessages = new Map<number, string[]>();
 
     if (callLines.length === 1) {
-      // Single call gets first output
-      callToMessage.set(callLines[0], messages[0]);
+      callToMessages.set(callLines[0], messages);
     } else {
-      // First call → first output
-      callToMessage.set(callLines[0], messages[0]);
-      // Last call → last output
-      callToMessage.set(callLines[callLines.length - 1], messages[messages.length - 1]);
-      // Middle calls: divide remaining outputs (indices 1..N-2) evenly among middle calls,
-      // show the LAST output from each call's batch (e.g., last loop iteration)
+      // Distribute: first call gets 1 message, last call gets 1 message,
+      // middle calls split the remaining messages evenly
       const middleCalls = callLines.length - 2;
-      const middleMessages = messages.length - 2; // exclude first and last
+      const middleMessages = messages.length - 2;
+
+      callToMessages.set(callLines[0], [messages[0]]);
+      callToMessages.set(callLines[callLines.length - 1], [messages[messages.length - 1]]);
+
       if (middleCalls > 0 && middleMessages > 0) {
-        const batchSize = Math.floor(middleMessages / middleCalls);
+        const batchSize = Math.ceil(middleMessages / middleCalls);
         for (let c = 0; c < middleCalls; c++) {
-          // Each middle call gets a batch; show the last message in its batch
-          const batchEnd = 1 + (c + 1) * batchSize - 1;
-          const msgIdx = Math.min(batchEnd, messages.length - 2);
-          callToMessage.set(callLines[c + 1], messages[msgIdx]);
+          const start = 1 + c * batchSize;
+          const end = Math.min(start + batchSize, messages.length - 1);
+          callToMessages.set(callLines[c + 1], messages.slice(start, end));
         }
       }
     }
 
-    for (const [lineIdx, msg] of callToMessage) {
+    const messageDecorations: vscode.DecorationOptions[] = [];
+    for (const [lineIdx, msgs] of callToMessages) {
+      const truncated = msgs.length > MAX_INLINE_VALUES
+        ? [...msgs.slice(0, MAX_INLINE_VALUES), `... (${msgs.length} total)`]
+        : msgs;
+      const display = truncated.join('  ');
       const range = editor.document.lineAt(lineIdx).range;
       messageDecorations.push({
         range,
         renderOptions: {
-          after: { contentText: `  \u2192 ${msg}` },
+          after: { contentText: `  \u2192 ${display}` },
         },
       });
     }
