@@ -5,7 +5,9 @@ export class AlRunnerManager {
   private resolvedPath: string | undefined;
 
   async ensureInstalled(): Promise<string> {
-    const configPath = vscode.workspace.getConfiguration('alchemist').get<string>('alRunnerPath', '');
+    const configPath = vscode.workspace.getConfiguration('alchemist').get<string>('alRunnerPath', '')
+      || process.env.ALCHEMIST_RUNNER_PATH
+      || '';
     if (configPath) {
       this.resolvedPath = configPath;
       return configPath;
@@ -69,13 +71,13 @@ export class AlRunnerManager {
     if (installChoice !== 'Install') return undefined;
 
     return new Promise((resolve) => {
-      cp.exec(`${dotnetPath} tool install -g BusinessCentral.AL.Runner`, (err, stdout, stderr) => {
+      cp.exec(`${dotnetPath} tool install -g msdyn365bc.al.runner`, (err, stdout, stderr) => {
         if (err) {
           // Might already be installed, try update
-          cp.exec(`${dotnetPath} tool update -g BusinessCentral.AL.Runner`, (err2) => {
+          cp.exec(`${dotnetPath} tool update -g msdyn365bc.al.runner`, (err2) => {
             if (err2) {
               vscode.window.showErrorMessage(
-                `Failed to install AL.Runner: ${stderr || err2.message}. Install manually: dotnet tool install -g BusinessCentral.AL.Runner`
+                `Failed to install AL.Runner: ${stderr || err2.message}. Install manually: dotnet tool install -g msdyn365bc.al.runner`
               );
               resolve(undefined);
             } else {
@@ -96,14 +98,14 @@ export class AlRunnerManager {
     const dotnetPath = vscode.workspace.getConfiguration('alchemist').get<string>('dotnetPath', '') || 'dotnet';
 
     cp.exec(`${dotnetPath} tool list -g`, (err, stdout) => {
-      if (err || !stdout.includes('businesscentral.al.runner')) return;
+      if (err || !stdout.includes('msdyn365bc.al.runner')) return;
 
       // Check NuGet for newer version (non-blocking, best-effort)
-      cp.exec(`${dotnetPath} tool search BusinessCentral.AL.Runner --take 1`, (err2, searchStdout) => {
+      cp.exec(`${dotnetPath} tool search msdyn365bc.al.runner --take 1`, (err2, searchStdout) => {
         if (err2 || !searchStdout) return;
 
-        const installedMatch = stdout.match(/businesscentral\.al\.runner\s+(\S+)/i);
-        const latestMatch = searchStdout.match(/BusinessCentral\.AL\.Runner\s+(\S+)/i);
+        const installedMatch = stdout.match(/msdyn365bc\.al\.runner\s+(\S+)/i);
+        const latestMatch = searchStdout.match(/msdyn365bc\.al\.runner\s+(\S+)/i);
 
         if (installedMatch && latestMatch && installedMatch[1] !== latestMatch[1]) {
           vscode.window.showInformationMessage(
@@ -111,7 +113,7 @@ export class AlRunnerManager {
             'Update'
           ).then((action) => {
             if (action === 'Update') {
-              cp.exec(`${dotnetPath} tool update -g BusinessCentral.AL.Runner`, (err3) => {
+              cp.exec(`${dotnetPath} tool update -g msdyn365bc.al.runner`, (err3) => {
                 if (err3) {
                   vscode.window.showErrorMessage(`Update failed: ${err3.message}`);
                 } else {
