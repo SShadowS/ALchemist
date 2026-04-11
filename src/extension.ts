@@ -227,7 +227,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const flashMs = config.get<number>('iterationFlashDuration', 600);
     const changedVars = iterationStore.getChangedValues(loopId, loop.currentIteration);
 
-    decorationManager.applyIterationView(editor, step, changedVars, flashMs);
+    decorationManager.applyIterationView(editor, step, changedVars, flashMs, {
+      start: loop.loopLine,
+      end: loop.loopEndLine,
+    });
     statusBar.setIterationIndicator(loopId, loop.currentIteration, loop.iterationCount);
   };
 

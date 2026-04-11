@@ -359,6 +359,7 @@ export class DecorationManager {
     step: { capturedValues: Map<string, string>; messages: string[]; linesExecuted: Set<number> },
     changedVarNames: string[],
     flashDurationMs: number,
+    loopLineRange?: { start: number; end: number },
   ): void {
     // Clear existing iteration-specific decorations
     editor.setDecorations(this.capturedValueDecorationType, []);
@@ -391,13 +392,16 @@ export class DecorationManager {
     editor.setDecorations(this.uncoveredDecorationType, uncovered);
     editor.setDecorations(this.dimmedDecorationType, dimmed);
 
-    // Apply per-iteration captured values
+    // Apply per-iteration captured values — only within the active loop's line range
     const valueDecorations: vscode.DecorationOptions[] = [];
     const flashDecorations: vscode.DecorationOptions[] = [];
     const changedSet = new Set(changedVarNames.map((n) => n.toLowerCase()));
 
+    const startLine = loopLineRange ? loopLineRange.start - 1 : 0; // Convert 1-based to 0-based
+    const endLine = loopLineRange ? loopLineRange.end - 1 : editor.document.lineCount - 1;
+
     const assignRegex = /\b(\w+)\s*:=/;
-    for (let i = 0; i < editor.document.lineCount; i++) {
+    for (let i = startLine; i <= endLine && i < editor.document.lineCount; i++) {
       const lineText = editor.document.lineAt(i).text;
       const match = lineText.match(assignRegex);
       if (match) {
