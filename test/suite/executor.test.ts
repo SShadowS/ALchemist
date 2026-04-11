@@ -53,5 +53,15 @@ suite('Executor', () => {
       const { cwd } = buildRunnerArgs('test', '/workspace/src/test.al');
       assert.strictEqual(cwd, '/workspace/src');
     });
+
+    test('scratch-standalone includes --iteration-tracking', () => {
+      const { args } = buildRunnerArgs('scratch-standalone', '/tmp/scratch.al');
+      assert.ok(args.includes('--iteration-tracking'));
+    });
+
+    test('test mode includes --iteration-tracking', () => {
+      const { args } = buildRunnerArgs('test', '/workspace/test.al', '/workspace');
+      assert.ok(args.includes('--iteration-tracking'));
+    });
   });
 });

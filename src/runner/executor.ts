@@ -11,19 +11,19 @@ export function buildRunnerArgs(mode: ExecutionMode, filePath: string, workspace
   switch (mode) {
     case 'scratch-standalone':
       return {
-        args: ['--output-json', '--capture-values', filePath],
+        args: ['--output-json', '--capture-values', '--iteration-tracking', filePath],
         cwd: path.dirname(filePath),
       };
     case 'scratch-project': {
       const srcPath = workspacePath || path.dirname(filePath);
       return {
-        args: ['--output-json', '--capture-values', '--coverage', srcPath, filePath],
+        args: ['--output-json', '--capture-values', '--iteration-tracking', '--coverage', srcPath, filePath],
         cwd: srcPath,
       };
     }
     case 'test': {
       const cwd = workspacePath || path.dirname(filePath);
-      const args = ['--output-json', '--capture-values', '--coverage', cwd];
+      const args = ['--output-json', '--capture-values', '--iteration-tracking', '--coverage', cwd];
       if (procedureName) {
         args.splice(args.length - 1, 0, '--run', procedureName);
       }
@@ -50,11 +50,34 @@ export class Executor {
     }
 
     this.cancel();
+    console.log(`ALchemist: execute(mode=${mode}, filePath=${filePath}, workspacePath=${workspacePath})`);
     this.onDidStartRun.fire(mode);
 
     const startTime = Date.now();
     const { args, cwd } = this.buildArgs(mode, filePath, workspacePath, procedureName);
 
+    const result = await this.runAndParse(runnerPath, args, cwd, mode, startTime);
+
+    // Fallback: if test mode failed with no tests (e.g. missing project dependencies),
+    // retry with just the single file standalone
+    if (mode === 'test' && result.tests.length === 0 && result.exitCode !== 0 && filePath.endsWith('.al')) {
+      // Retry with just the single file, but keep --coverage for gutter display
+      const fallbackArgs = {
+        args: ['--output-json', '--capture-values', '--iteration-tracking', '--coverage', filePath],
+        cwd: path.dirname(filePath),
+      };
+      console.log(`ALchemist: project compilation failed (exit=${result.exitCode}), retrying single file: ${filePath}`);
+      const fallbackResult = await this.runAndParse(runnerPath, fallbackArgs.args, fallbackArgs.cwd, mode, startTime);
+      console.log(`ALchemist: fallback result: exit=${fallbackResult.exitCode}, tests=${fallbackResult.tests.length}, iterations=${fallbackResult.iterations.length}`);
+      console.log(`ALchemist: firing fallback result (tests=${fallbackResult.tests.length}, iter=${fallbackResult.iterations.length})`);
+      this.onDidFinishRun.fire(fallbackResult);
+    } else {
+      console.log(`ALchemist: firing result (tests=${result.tests.length}, iter=${result.iterations.length}, exit=${result.exitCode})`);
+      this.onDidFinishRun.fire(result);
+    }
+  }
+
+  private async runAndParse(runnerPath: string, args: string[], cwd: string, mode: ExecutionMode, startTime: number): Promise<ExecutionResult> {
     try {
       const { stdout, stderr, exitCode } = await this.spawn(runnerPath, args, cwd);
       const coberturaPath = path.join(cwd, 'cobertura.xml');
@@ -69,7 +92,7 @@ export class Executor {
 
       console.log('ALchemist: using JSON parser (--output-json)');
       const jsonResult = parseJsonOutput(stdout);
-      const result: ExecutionResult = {
+      return {
         mode: mode === 'test' ? 'test' : 'scratch',
         tests: jsonResult.tests,
         messages: jsonResult.messages,
@@ -80,11 +103,10 @@ export class Executor {
         durationMs: Date.now() - startTime,
         capturedValues: jsonResult.capturedValues,
         cached: jsonResult.cached,
+        iterations: jsonResult.iterations,
       };
-
-      this.onDidFinishRun.fire(result);
     } catch (err: any) {
-      const result: ExecutionResult = {
+      return {
         mode: mode === 'test' ? 'test' : 'scratch',
         tests: [],
         messages: [],
@@ -95,8 +117,8 @@ export class Executor {
         durationMs: Date.now() - startTime,
         capturedValues: [],
         cached: false,
+        iterations: [],
       };
-      this.onDidFinishRun.fire(result);
     }
   }
 

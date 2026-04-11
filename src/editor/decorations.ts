@@ -60,6 +60,8 @@ export class DecorationManager {
   private readonly dimmedDecorationType: vscode.TextEditorDecorationType;
   private readonly messageDecorationType: vscode.TextEditorDecorationType;
   private readonly errorMessageDecorationType: vscode.TextEditorDecorationType;
+  private readonly changedValueFlashDecorationType: vscode.TextEditorDecorationType;
+  private flashTimeout: ReturnType<typeof setTimeout> | undefined;
 
   // Track per-file line coverage for hover provider
   private lineCoverageMap = new Map<string, Map<number, { hits: number }>>();
@@ -109,6 +111,15 @@ export class DecorationManager {
         fontStyle: 'normal',
       },
     });
+
+    this.changedValueFlashDecorationType = vscode.window.createTextEditorDecorationType({
+      after: {
+        color: '#9cdcfe',
+        margin: '0 0 0 16px',
+        fontStyle: 'italic',
+        backgroundColor: 'rgba(86, 156, 214, 0.15)',
+      },
+    });
   }
 
   applyResults(editor: vscode.TextEditor, result: ExecutionResult, workspacePath: string): void {
@@ -147,6 +158,7 @@ export class DecorationManager {
     editor.setDecorations(this.dimmedDecorationType, []);
     editor.setDecorations(this.messageDecorationType, []);
     editor.setDecorations(this.errorMessageDecorationType, []);
+    editor.setDecorations(this.changedValueFlashDecorationType, []);
   }
 
   clearAll(): void {
@@ -342,6 +354,109 @@ export class DecorationManager {
     });
   }
 
+  applyIterationView(
+    editor: vscode.TextEditor,
+    step: { capturedValues: Map<string, string>; messages: string[]; linesExecuted: Set<number> },
+    changedVarNames: string[],
+    flashDurationMs: number,
+    loopLineRange?: { start: number; end: number },
+  ): void {
+    // Clear existing iteration-specific decorations
+    editor.setDecorations(this.capturedValueDecorationType, []);
+    editor.setDecorations(this.messageDecorationType, []);
+    editor.setDecorations(this.changedValueFlashDecorationType, []);
+    editor.setDecorations(this.coveredDecorationType, []);
+    editor.setDecorations(this.uncoveredDecorationType, []);
+    editor.setDecorations(this.dimmedDecorationType, []);
+
+    if (this.flashTimeout) {
+      clearTimeout(this.flashTimeout);
+      this.flashTimeout = undefined;
+    }
+
+    // Apply per-iteration coverage gutters (scoped to loop line range)
+    const covered: vscode.DecorationOptions[] = [];
+    const uncovered: vscode.DecorationOptions[] = [];
+    const dimmed: vscode.DecorationOptions[] = [];
+    const covStart = loopLineRange ? loopLineRange.start - 1 : 0;
+    const covEnd = loopLineRange ? loopLineRange.end - 1 : editor.document.lineCount - 1;
+    for (let i = covStart; i <= covEnd && i < editor.document.lineCount; i++) {
+      const lineNum = i + 1; // 1-based
+      const range = new vscode.Range(i, 0, i, 0);
+      if (step.linesExecuted.has(lineNum)) {
+        covered.push({ range });
+      } else {
+        uncovered.push({ range });
+        dimmed.push({ range: editor.document.lineAt(i).range });
+      }
+    }
+    editor.setDecorations(this.coveredDecorationType, covered);
+    editor.setDecorations(this.uncoveredDecorationType, uncovered);
+    editor.setDecorations(this.dimmedDecorationType, dimmed);
+
+    // Apply per-iteration captured values — only within the active loop's line range
+    const valueDecorations: vscode.DecorationOptions[] = [];
+    const flashDecorations: vscode.DecorationOptions[] = [];
+    const changedSet = new Set(changedVarNames.map((n) => n.toLowerCase()));
+
+    const startLine = loopLineRange ? loopLineRange.start - 1 : 0; // Convert 1-based to 0-based
+    const endLine = loopLineRange ? loopLineRange.end - 1 : editor.document.lineCount - 1;
+
+    const assignRegex = /\b(\w+)\s*:=/;
+    for (let i = startLine; i <= endLine && i < editor.document.lineCount; i++) {
+      const lineText = editor.document.lineAt(i).text;
+      const match = lineText.match(assignRegex);
+      if (match) {
+        const varName = match[1];
+        const value = step.capturedValues.get(varName);
+        if (value !== undefined) {
+          const range = editor.document.lineAt(i).range;
+          const isChanged = changedSet.has(varName.toLowerCase());
+          const decorations = isChanged && flashDurationMs > 0 ? flashDecorations : valueDecorations;
+          decorations.push({
+            range,
+            renderOptions: {
+              after: { contentText: `  ${varName} = ${value}` },
+            },
+          });
+        }
+      }
+    }
+    editor.setDecorations(this.capturedValueDecorationType, valueDecorations);
+
+    // Apply flash to changed values
+    if (flashDecorations.length > 0 && flashDurationMs > 0) {
+      editor.setDecorations(this.changedValueFlashDecorationType, flashDecorations);
+      this.flashTimeout = setTimeout(() => {
+        editor.setDecorations(this.changedValueFlashDecorationType, []);
+        editor.setDecorations(this.capturedValueDecorationType, [...valueDecorations, ...flashDecorations]);
+        this.flashTimeout = undefined;
+      }, flashDurationMs);
+    }
+
+    // Apply per-iteration messages
+    const messageCallRegex = /\bMessage\s*\(/i;
+    const callLines: number[] = [];
+    for (let i = 0; i < editor.document.lineCount; i++) {
+      if (messageCallRegex.test(editor.document.lineAt(i).text)) {
+        callLines.push(i);
+      }
+    }
+    if (callLines.length > 0 && step.messages.length > 0) {
+      const msgDecorations: vscode.DecorationOptions[] = [];
+      for (let c = 0; c < callLines.length && c < step.messages.length; c++) {
+        const range = editor.document.lineAt(callLines[c]).range;
+        msgDecorations.push({
+          range,
+          renderOptions: {
+            after: { contentText: `  \u2192 ${step.messages[c]}` },
+          },
+        });
+      }
+      editor.setDecorations(this.messageDecorationType, msgDecorations);
+    }
+  }
+
   dispose(): void {
     this.coveredDecorationType.dispose();
     this.uncoveredDecorationType.dispose();
@@ -350,6 +465,10 @@ export class DecorationManager {
     this.dimmedDecorationType.dispose();
     this.messageDecorationType.dispose();
     this.errorMessageDecorationType.dispose();
+    this.changedValueFlashDecorationType.dispose();
+    if (this.flashTimeout) {
+      clearTimeout(this.flashTimeout);
+    }
     this.lineCoverageMap.clear();
   }
 }

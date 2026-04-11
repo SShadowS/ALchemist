@@ -1,4 +1,5 @@
 import { XMLParser } from 'fast-xml-parser';
+import { IterationData } from '../iteration/types';
 
 export interface TestResult {
   name: string;
@@ -42,6 +43,7 @@ export interface ExecutionResult {
   durationMs: number;
   capturedValues: CapturedValue[];
   cached: boolean;
+  iterations: IterationData[];
 }
 
 const PASS_REGEX = /^PASS\s{2}(\S+)\s+\((\d+)ms\)$/;
@@ -142,12 +144,19 @@ export function parseJsonOutput(json: string): {
   summary: RunSummary;
   capturedValues: CapturedValue[];
   cached: boolean;
+  iterations: IterationData[];
 } {
   // AL.Runner may output bare text (Message(), Timing) before the JSON object.
   // Extract the JSON portion by finding the last top-level { ... } block.
   const jsonStart = json.lastIndexOf('\n{');
   const jsonStr = jsonStart >= 0 ? json.substring(jsonStart + 1) : json;
   const data = JSON.parse(jsonStr);
+
+  if (data.version) {
+    console.log(`ALchemist: AL.Runner version ${data.version}, iterations: ${data.iterations?.length ?? 0}`);
+  } else {
+    console.log('ALchemist: AL.Runner version unknown (no version field — using NuGet runner?)');
+  }
 
   const statusMap: Record<string, 'passed' | 'failed' | 'errored'> = {
     pass: 'passed',
@@ -179,12 +188,31 @@ export function parseJsonOutput(json: string): {
     statementId: v.statementId,
   }));
 
+  const iterations: IterationData[] = (data.iterations || []).map((iter: any) => ({
+    loopId: iter.loopId,
+    loopLine: iter.loopLine,
+    loopEndLine: iter.loopEndLine,
+    parentLoopId: iter.parentLoopId ?? null,
+    parentIteration: iter.parentIteration ?? null,
+    iterationCount: iter.iterationCount,
+    steps: (iter.steps || []).map((s: any) => ({
+      iteration: s.iteration,
+      capturedValues: (s.capturedValues || []).map((cv: any) => ({
+        variableName: cv.variableName,
+        value: cv.value ?? '',
+      })),
+      messages: s.messages || [],
+      linesExecuted: s.linesExecuted || [],
+    })),
+  }));
+
   return {
     tests,
     messages: data.messages || [],
     summary,
     capturedValues,
     cached: data.cached ?? false,
+    iterations,
   };
 }
 

@@ -5,3 +5,4 @@ dist/
 .superpowers/
 .vscode-test/
 *.tsbuildinfo
+cobertura.xml

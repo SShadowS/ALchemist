@@ -1,4 +1,6 @@
 import * as assert from 'assert';
+import { IterationStore } from '../../src/iteration/iterationStore';
+import { IterationData } from '../../src/iteration/types';
 
 suite('HoverProvider', () => {
   // Test the deduplication logic directly
@@ -35,5 +37,64 @@ suite('HoverProvider', () => {
       cv => cv.variableName.toLowerCase() === 'y'
     );
     assert.strictEqual(matching.length, 0);
+  });
+});
+
+suite('HoverProvider — iteration-aware', () => {
+  function makeLoopData(): IterationData[] {
+    return [{
+      loopId: 'L0', loopLine: 10, loopEndLine: 11,
+      parentLoopId: null, parentIteration: null, iterationCount: 5,
+      steps: [
+        { iteration: 1, capturedValues: [{ variableName: 'myText', value: '1' }], messages: [], linesExecuted: [10, 11] },
+        { iteration: 2, capturedValues: [{ variableName: 'myText', value: '12' }], messages: [], linesExecuted: [10, 11] },
+        { iteration: 3, capturedValues: [{ variableName: 'myText', value: '123' }], messages: [], linesExecuted: [10, 11] },
+        { iteration: 4, capturedValues: [{ variableName: 'myText', value: '1234' }], messages: [], linesExecuted: [10, 11] },
+        { iteration: 5, capturedValues: [{ variableName: 'myText', value: '12345' }], messages: [], linesExecuted: [10, 11] },
+      ],
+    }];
+  }
+
+  test('when stepping, store provides per-iteration value (not aggregate)', () => {
+    const store = new IterationStore();
+    store.load(makeLoopData());
+    store.setIteration('L0', 3);
+
+    // Hover should use store's per-iteration value
+    const step = store.getStep('L0', store.getCurrentIteration('L0'));
+    assert.strictEqual(step.capturedValues.get('myText'), '123');
+    // NOT '12345' (the aggregate last value)
+  });
+
+  test('when stepping, linesExecuted shows coverage for current iteration', () => {
+    const store = new IterationStore();
+    store.load(makeLoopData());
+    store.setIteration('L0', 2);
+
+    const step = store.getStep('L0', store.getCurrentIteration('L0'));
+    assert.ok(step.linesExecuted.has(10), 'loop line should be covered');
+    assert.ok(step.linesExecuted.has(11), 'body line should be covered');
+    assert.ok(!step.linesExecuted.has(9), 'line before loop should not be covered');
+  });
+
+  test('when showing all, iteration store reports show-all mode', () => {
+    const store = new IterationStore();
+    store.load(makeLoopData());
+    store.showAll('L0');
+
+    assert.ok(store.isShowingAll('L0'));
+    // In show-all, hover falls back to aggregate — tested via existing hover tests
+  });
+
+  test('stepping through iterations gives correct sequence of values', () => {
+    const store = new IterationStore();
+    store.load(makeLoopData());
+
+    const expected = ['1', '12', '123', '1234', '12345'];
+    for (let i = 1; i <= 5; i++) {
+      const step = store.setIteration('L0', i);
+      assert.strictEqual(step.capturedValues.get('myText'), expected[i - 1],
+        `iteration ${i} should have myText = ${expected[i - 1]}`);
+    }
   });
 });

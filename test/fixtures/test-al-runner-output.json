@@ -1,0 +1,206 @@
+{
+  "tests": [
+    {
+      "name": "DoMethodName",
+      "status": "pass",
+      "durationMs": 3
+    }
+  ],
+  "passed": 1,
+  "failed": 0,
+  "errors": 0,
+  "total": 1,
+  "exitCode": 0,
+  "capturedValues": [
+    {
+      "scopeName": "DoMethodName_Scope__66985615",
+      "variableName": "myText",
+      "value": "1",
+      "statementId": 1
+    },
+    {
+      "scopeName": "DoMethodName_Scope__66985615",
+      "variableName": "myText",
+      "value": "12",
+      "statementId": 1
+    },
+    {
+      "scopeName": "DoMethodName_Scope__66985615",
+      "variableName": "myText",
+      "value": "123",
+      "statementId": 1
+    },
+    {
+      "scopeName": "DoMethodName_Scope__66985615",
+      "variableName": "myText",
+      "value": "1234",
+      "statementId": 1
+    },
+    {
+      "scopeName": "DoMethodName_Scope__66985615",
+      "variableName": "myText",
+      "value": "12345",
+      "statementId": 1
+    },
+    {
+      "scopeName": "DoMethodName_Scope__66985615",
+      "variableName": "myText",
+      "value": "123456",
+      "statementId": 1
+    },
+    {
+      "scopeName": "DoMethodName_Scope__66985615",
+      "variableName": "myText",
+      "value": "1234567",
+      "statementId": 1
+    },
+    {
+      "scopeName": "DoMethodName_Scope__66985615",
+      "variableName": "myText",
+      "value": "12345678",
+      "statementId": 1
+    },
+    {
+      "scopeName": "DoMethodName_Scope__66985615",
+      "variableName": "myText",
+      "value": "123456789",
+      "statementId": 1
+    },
+    {
+      "scopeName": "DoMethodName_Scope__66985615",
+      "variableName": "myText",
+      "value": "12345678910",
+      "statementId": 1
+    },
+    {
+      "scopeName": "DoMethodName",
+      "variableName": "i",
+      "value": "10",
+      "statementId": 0
+    },
+    {
+      "scopeName": "DoMethodName",
+      "variableName": "myText",
+      "value": "12345678910",
+      "statementId": 0
+    }
+  ],
+  "iterations": [
+    {
+      "loopId": "L0",
+      "loopLine": 11,
+      "loopEndLine": 11,
+      "iterationCount": 10,
+      "steps": [
+        {
+          "iteration": 1,
+          "capturedValues": [
+            {
+              "variableName": "myText",
+              "value": "1"
+            }
+          ],
+          "linesExecuted": [
+            11
+          ]
+        },
+        {
+          "iteration": 2,
+          "capturedValues": [
+            {
+              "variableName": "myText",
+              "value": "12"
+            }
+          ],
+          "linesExecuted": [
+            11
+          ]
+        },
+        {
+          "iteration": 3,
+          "capturedValues": [
+            {
+              "variableName": "myText",
+              "value": "123"
+            }
+          ],
+          "linesExecuted": [
+            11
+          ]
+        },
+        {
+          "iteration": 4,
+          "capturedValues": [
+            {
+              "variableName": "myText",
+              "value": "1234"
+            }
+          ],
+          "linesExecuted": [
+            11
+          ]
+        },
+        {
+          "iteration": 5,
+          "capturedValues": [
+            {
+              "variableName": "myText",
+              "value": "12345"
+            }
+          ],
+          "linesExecuted": [
+            11
+          ]
+        },
+        {
+          "iteration": 6,
+          "capturedValues": [
+            {
+              "variableName": "myText",
+              "value": "123456"
+            }
+          ],
+          "linesExecuted": [
+            11
+          ]
+        },
+        {
+          "iteration": 7,
+          "capturedValues": [
+            {
+              "variableName": "myText",
+              "value": "1234567"
+            }
+          ],
+          "linesExecuted": [
+            11
+          ]
+        },
+        {
+          "iteration": 8,
+          "capturedValues": [
+            {
+              "variableName": "myText",
+              "value": "12345678"
+            }
+          ],
+          "linesExecuted": [
+            11
+          ]
+        },
+        {
+          "iteration": 9,
+          "capturedValues": [
+            {
+              "variableName": "myText",
+              "value": "123456789"
+            }
+          ],
+          "linesExecuted": [
+            11
+          ]
+        }
+      ]
+    }
+  ]
+}
