@@ -10,7 +10,7 @@ import { ScratchManager, isScratchFile, isProjectAware } from './scratch/scratch
 import { AlchemistTestController } from './testing/testController';
 import { IterationStore } from './iteration/iterationStore';
 import { IterationCodeLensProvider, IterationStepperDecoration } from './iteration/iterationCodeLensProvider';
-import { registerIterationCommands } from './iteration/iterationCommands';
+import { registerIterationCommands, findLoopAtCursor } from './iteration/iterationCommands';
 import { IterationTablePanel } from './iteration/iterationTablePanel';
 
 let runnerManager: AlRunnerManager;
@@ -72,12 +72,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const activeFile = vscode.window.activeTextEditor?.document.fileName || 'unknown';
       outputChannel.displayResult(result, path.basename(activeFile));
 
+      // Always capture last result regardless of editor state
+      lastExecutionResult = result;
+
       // Apply decorations to active editor
       const editor = vscode.window.activeTextEditor;
       if (editor) {
         const wsPath = workspaceFolder?.uri.fsPath || path.dirname(editor.document.uri.fsPath);
         decorationManager.applyResults(editor, result, wsPath);
-        lastExecutionResult = result;
       }
 
       // Update Test Explorer
@@ -208,37 +210,57 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // --- Iteration navigation ---
 
   const onIterationChanged = (loopId: string) => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) return;
+    try {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) return;
 
-    if (iterationStore.isShowingAll(loopId)) {
-      // Re-apply aggregate decorations from the last execution result
-      if (lastExecutionResult) {
-        const wsPath = workspaceFolder?.uri.fsPath || path.dirname(editor.document.uri.fsPath);
-        decorationManager.applyResults(editor, lastExecutionResult, wsPath);
+      if (iterationStore.isShowingAll(loopId)) {
+        // Re-apply aggregate decorations from the last execution result
+        if (lastExecutionResult) {
+          const wsPath = workspaceFolder?.uri.fsPath || path.dirname(editor.document.uri.fsPath);
+          decorationManager.applyResults(editor, lastExecutionResult, wsPath);
+        }
+        statusBar.clearIterationIndicator();
+        return;
       }
-      statusBar.clearIterationIndicator();
-      return;
+
+      const loop = iterationStore.getLoop(loopId);
+      const step = iterationStore.getStep(loopId, loop.currentIteration);
+      const config = vscode.workspace.getConfiguration('alchemist');
+      const flashMs = config.get<number>('iterationFlashDuration', 600);
+      const changedVars = iterationStore.getChangedValues(loopId, loop.currentIteration);
+
+      decorationManager.applyIterationView(editor, step, changedVars, flashMs, {
+        start: loop.loopLine,
+        end: loop.loopEndLine,
+      });
+      statusBar.setIterationIndicator(loopId, loop.currentIteration, loop.iterationCount);
+    } catch (err: any) {
+      console.error('ALchemist: iteration change error:', err);
     }
-
-    const loop = iterationStore.getLoop(loopId);
-    const step = iterationStore.getStep(loopId, loop.currentIteration);
-    const config = vscode.workspace.getConfiguration('alchemist');
-    const flashMs = config.get<number>('iterationFlashDuration', 600);
-    const changedVars = iterationStore.getChangedValues(loopId, loop.currentIteration);
-
-    decorationManager.applyIterationView(editor, step, changedVars, flashMs, {
-      start: loop.loopLine,
-      end: loop.loopEndLine,
-    });
-    statusBar.setIterationIndicator(loopId, loop.currentIteration, loop.iterationCount);
   };
 
-  registerIterationCommands(context, iterationStore, onIterationChanged);
+  registerIterationCommands(context, iterationStore);
+
+  // Also apply decorations when store changes from other sources (e.g., table panel clicks)
+  context.subscriptions.push(
+    iterationStore.onDidChange((event) => {
+      if (event.kind === 'iteration-changed' || event.kind === 'show-all') {
+        onIterationChanged(event.loopId);
+      }
+    })
+  );
 
   // Iteration table command
   context.subscriptions.push(
     vscode.commands.registerCommand('alchemist.iterationTable', (loopId?: string) => {
+      if (!loopId) {
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+          const cursorLine = editor.selection.active.line + 1;
+          loopId = findLoopAtCursor(iterationStore.getLoops(), cursorLine) || undefined;
+        }
+      }
       const id = loopId || iterationStore.getLoops()[0]?.loopId;
       if (id) iterationTablePanel.show(id);
     })

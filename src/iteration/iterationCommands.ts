@@ -33,38 +33,32 @@ function getTargetLoopId(store: IterationStore, explicitLoopId?: string): string
 export function registerIterationCommands(
   context: vscode.ExtensionContext,
   store: IterationStore,
-  onIterationChanged: (loopId: string) => void,
 ): void {
   context.subscriptions.push(
     vscode.commands.registerCommand('alchemist.iterationNext', (loopId?: string) => {
       const id = getTargetLoopId(store, loopId);
       if (!id) return;
       store.nextIteration(id);
-      onIterationChanged(id);
     }),
     vscode.commands.registerCommand('alchemist.iterationPrev', (loopId?: string) => {
       const id = getTargetLoopId(store, loopId);
       if (!id) return;
       store.prevIteration(id);
-      onIterationChanged(id);
     }),
     vscode.commands.registerCommand('alchemist.iterationFirst', (loopId?: string) => {
       const id = getTargetLoopId(store, loopId);
       if (!id) return;
       store.firstIteration(id);
-      onIterationChanged(id);
     }),
     vscode.commands.registerCommand('alchemist.iterationLast', (loopId?: string) => {
       const id = getTargetLoopId(store, loopId);
       if (!id) return;
       store.lastIteration(id);
-      onIterationChanged(id);
     }),
     vscode.commands.registerCommand('alchemist.iterationShowAll', (loopId?: string) => {
       const id = getTargetLoopId(store, loopId);
       if (!id) return;
       store.showAll(id);
-      onIterationChanged(id);
     }),
   );
 }

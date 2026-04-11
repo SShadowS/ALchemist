@@ -59,14 +59,24 @@ export class IterationTablePanel {
       return;
     }
 
+    if (loop.iterationCount === 0) {
+      this.panel.webview.html = '<!DOCTYPE html><html><body><p>No iteration data available.</p></body></html>';
+      return;
+    }
+
     const rows: string[] = [];
-    const firstStep = this.store.getStep(this.currentLoopId, 1);
+    let firstStep;
+    try {
+      firstStep = this.store.getStep(this.currentLoopId, 1);
+    } catch {
+      this.panel.webview.html = '<!DOCTYPE html><html><body><p>No iteration data available.</p></body></html>';
+      return;
+    }
     const varNames = Array.from(firstStep.capturedValues.keys());
 
     for (let i = 1; i <= loop.iterationCount; i++) {
       const step = this.store.getStep(this.currentLoopId, i);
       const isCurrent = i === loop.currentIteration;
-      const isError = i === loop.errorIteration;
 
       // Detect changed values
       const changedVars = new Set(this.store.getChangedValues(this.currentLoopId!, i));
@@ -90,7 +100,6 @@ export class IterationTablePanel {
 
       const rowClass = [
         isCurrent ? 'current' : '',
-        isError ? 'error' : '',
       ].filter(Boolean).join(' ');
 
       rows.push(`<tr class="${rowClass}" onclick="selectRow(${i}, '${escapeHtml(this.currentLoopId)}')">
@@ -213,5 +222,5 @@ export class IterationTablePanel {
 }
 
 function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }

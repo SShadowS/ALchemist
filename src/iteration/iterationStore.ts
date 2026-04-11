@@ -66,12 +66,20 @@ export class IterationStore {
 
   nextIteration(loopId: string): IterationStep {
     const current = this.getCurrentIteration(loopId);
+    if (current === 0) {
+      // From show-all, go to first iteration
+      return this.setIteration(loopId, 1);
+    }
     const count = this.getLoop(loopId).iterationCount;
     return this.setIteration(loopId, Math.min(current + 1, count));
   }
 
   prevIteration(loopId: string): IterationStep {
     const current = this.getCurrentIteration(loopId);
+    if (current === 0) {
+      // From show-all, go to last iteration
+      return this.setIteration(loopId, this.getLoop(loopId).iterationCount);
+    }
     return this.setIteration(loopId, Math.max(current - 1, 1));
   }
 

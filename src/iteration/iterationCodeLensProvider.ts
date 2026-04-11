@@ -62,11 +62,13 @@ export function buildCodeLenses(store: IterationStore): vscode.CodeLens[] {
       }));
     }
 
-    lenses.push(new vscode.CodeLens(range, {
-      title: 'Show All',
-      command: 'alchemist.iterationShowAll',
-      arguments: [loop.loopId],
-    }));
+    if (!store.isShowingAll(loop.loopId)) {
+      lenses.push(new vscode.CodeLens(range, {
+        title: 'Show All',
+        command: 'alchemist.iterationShowAll',
+        arguments: [loop.loopId],
+      }));
+    }
 
     lenses.push(new vscode.CodeLens(range, {
       title: 'Table',

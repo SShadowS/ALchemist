@@ -96,6 +96,22 @@ suite('IterationStore', () => {
     assert.strictEqual(step.iteration, 1);
   });
 
+  test('nextIteration from show-all goes to first', () => {
+    const store = new IterationStore();
+    store.load(makeSingleLoop());
+    store.showAll('L0');
+    const step = store.nextIteration('L0');
+    assert.strictEqual(step.iteration, 1);
+  });
+
+  test('prevIteration from show-all goes to last', () => {
+    const store = new IterationStore();
+    store.load(makeSingleLoop());
+    store.showAll('L0');
+    const step = store.prevIteration('L0');
+    assert.strictEqual(step.iteration, 5);
+  });
+
   test('firstIteration jumps to 1', () => {
     const store = new IterationStore();
     store.load(makeSingleLoop());

@@ -25,7 +25,6 @@ export interface LoopInfo {
   parentIteration: number | null;
   iterationCount: number;
   currentIteration: number; // 1-based when stepping, 0 = "show all"
-  errorIteration?: number;
 }
 
 export interface IterationStep {

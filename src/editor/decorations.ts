@@ -374,25 +374,40 @@ export class DecorationManager {
       this.flashTimeout = undefined;
     }
 
+    const config = vscode.workspace.getConfiguration('alchemist');
+
     // Apply per-iteration coverage gutters (scoped to loop line range)
-    const covered: vscode.DecorationOptions[] = [];
-    const uncovered: vscode.DecorationOptions[] = [];
-    const dimmed: vscode.DecorationOptions[] = [];
-    const covStart = loopLineRange ? loopLineRange.start - 1 : 0;
-    const covEnd = loopLineRange ? loopLineRange.end - 1 : editor.document.lineCount - 1;
-    for (let i = covStart; i <= covEnd && i < editor.document.lineCount; i++) {
-      const lineNum = i + 1; // 1-based
-      const range = new vscode.Range(i, 0, i, 0);
-      if (step.linesExecuted.has(lineNum)) {
-        covered.push({ range });
-      } else {
-        uncovered.push({ range });
-        dimmed.push({ range: editor.document.lineAt(i).range });
+    if (config.get<boolean>('showGutterCoverage', true)) {
+      const covered: vscode.DecorationOptions[] = [];
+      const uncovered: vscode.DecorationOptions[] = [];
+      const covStart = loopLineRange ? loopLineRange.start - 1 : 0;
+      const covEnd = loopLineRange ? loopLineRange.end - 1 : editor.document.lineCount - 1;
+      for (let i = covStart; i <= covEnd && i < editor.document.lineCount; i++) {
+        const lineNum = i + 1; // 1-based
+        const range = new vscode.Range(i, 0, i, 0);
+        if (step.linesExecuted.has(lineNum)) {
+          covered.push({ range });
+        } else {
+          uncovered.push({ range });
+        }
       }
+      editor.setDecorations(this.coveredDecorationType, covered);
+      editor.setDecorations(this.uncoveredDecorationType, uncovered);
     }
-    editor.setDecorations(this.coveredDecorationType, covered);
-    editor.setDecorations(this.uncoveredDecorationType, uncovered);
-    editor.setDecorations(this.dimmedDecorationType, dimmed);
+
+    // Apply dimming for uncovered lines within loop range
+    if (config.get<boolean>('dimUncoveredLines', true)) {
+      const dimmed: vscode.DecorationOptions[] = [];
+      const dimStart = loopLineRange ? loopLineRange.start - 1 : 0;
+      const dimEnd = loopLineRange ? loopLineRange.end - 1 : editor.document.lineCount - 1;
+      for (let i = dimStart; i <= dimEnd && i < editor.document.lineCount; i++) {
+        const lineNum = i + 1; // 1-based
+        if (!step.linesExecuted.has(lineNum)) {
+          dimmed.push({ range: editor.document.lineAt(i).range });
+        }
+      }
+      editor.setDecorations(this.dimmedDecorationType, dimmed);
+    }
 
     // Apply per-iteration captured values — only within the active loop's line range
     const valueDecorations: vscode.DecorationOptions[] = [];
