@@ -246,10 +246,15 @@ export class DecorationManager {
 
     const messageDecorations: vscode.DecorationOptions[] = [];
     for (const [lineIdx, msgs] of callToMessages) {
-      const truncated = msgs.length > MAX_INLINE_VALUES
-        ? [...msgs.slice(0, MAX_INLINE_VALUES), `... (${msgs.length} total)`]
-        : msgs;
-      const display = truncated.join('  ');
+      let display: string;
+      if (msgs.length === 1) {
+        display = msgs[0];
+      } else if (msgs.length <= 3) {
+        display = msgs.join(' | ');
+      } else {
+        // Show first .. last (×count) for loops
+        display = `${msgs[0]} \u2025 ${msgs[msgs.length - 1]}  (\u00D7${msgs.length})`;
+      }
       const range = editor.document.lineAt(lineIdx).range;
       messageDecorations.push({
         range,
