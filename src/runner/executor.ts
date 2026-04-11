@@ -11,19 +11,19 @@ export function buildRunnerArgs(mode: ExecutionMode, filePath: string, workspace
   switch (mode) {
     case 'scratch-standalone':
       return {
-        args: ['--output-json', '--capture-values', filePath],
+        args: ['--output-json', '--capture-values', '--iteration-tracking', filePath],
         cwd: path.dirname(filePath),
       };
     case 'scratch-project': {
       const srcPath = workspacePath || path.dirname(filePath);
       return {
-        args: ['--output-json', '--capture-values', '--coverage', srcPath, filePath],
+        args: ['--output-json', '--capture-values', '--iteration-tracking', '--coverage', srcPath, filePath],
         cwd: srcPath,
       };
     }
     case 'test': {
       const cwd = workspacePath || path.dirname(filePath);
-      const args = ['--output-json', '--capture-values', '--coverage', cwd];
+      const args = ['--output-json', '--capture-values', '--iteration-tracking', '--coverage', cwd];
       if (procedureName) {
         args.splice(args.length - 1, 0, '--run', procedureName);
       }
