@@ -41,17 +41,11 @@ export class CoverageHoverProvider implements vscode.HoverProvider {
     const markdown = new vscode.MarkdownString();
     markdown.isTrusted = true;
 
-    // Show captured variable values
+    // Show captured variable value (last captured wins)
     if (matchingValues.length > 0) {
+      const lastValue = matchingValues[matchingValues.length - 1].value;
       markdown.appendMarkdown(`**ALchemist: ${hoveredWord}**\n\n`);
-      // Group by scope, show last value per scope
-      const byScope = new Map<string, string>();
-      for (const cv of matchingValues) {
-        byScope.set(cv.scopeName, cv.value);
-      }
-      for (const [scope, value] of byScope) {
-        markdown.appendCodeblock(`${hoveredWord} = ${value}`, 'al');
-      }
+      markdown.appendCodeblock(`${hoveredWord} = ${lastValue}`, 'al');
       markdown.appendMarkdown('\n');
     }
 
