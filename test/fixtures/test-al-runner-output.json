@@ -88,8 +88,8 @@
   "iterations": [
     {
       "loopId": "L0",
-      "loopLine": 10,
-      "loopEndLine": 10,
+      "loopLine": 11,
+      "loopEndLine": 11,
       "iterationCount": 10,
       "steps": [
         {
@@ -101,7 +101,7 @@
             }
           ],
           "linesExecuted": [
-            10
+            11
           ]
         },
         {
@@ -113,7 +113,7 @@
             }
           ],
           "linesExecuted": [
-            10
+            11
           ]
         },
         {
@@ -125,7 +125,7 @@
             }
           ],
           "linesExecuted": [
-            10
+            11
           ]
         },
         {
@@ -137,7 +137,7 @@
             }
           ],
           "linesExecuted": [
-            10
+            11
           ]
         },
         {
@@ -149,7 +149,7 @@
             }
           ],
           "linesExecuted": [
-            10
+            11
           ]
         },
         {
@@ -161,7 +161,7 @@
             }
           ],
           "linesExecuted": [
-            10
+            11
           ]
         },
         {
@@ -173,7 +173,7 @@
             }
           ],
           "linesExecuted": [
-            10
+            11
           ]
         },
         {
@@ -185,7 +185,7 @@
             }
           ],
           "linesExecuted": [
-            10
+            11
           ]
         },
         {
@@ -197,7 +197,7 @@
             }
           ],
           "linesExecuted": [
-            10
+            11
           ]
         }
       ]
