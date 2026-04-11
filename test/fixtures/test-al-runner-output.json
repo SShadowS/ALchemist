@@ -1,5 +1,4 @@
 {
-  "version": "1.0.8-iteration-tracking",
   "tests": [
     {
       "name": "DoMethodName",
@@ -113,7 +112,9 @@
               "value": "12"
             }
           ],
-          "linesExecuted": []
+          "linesExecuted": [
+            10
+          ]
         },
         {
           "iteration": 3,
@@ -123,7 +124,9 @@
               "value": "123"
             }
           ],
-          "linesExecuted": []
+          "linesExecuted": [
+            10
+          ]
         },
         {
           "iteration": 4,
@@ -133,7 +136,9 @@
               "value": "1234"
             }
           ],
-          "linesExecuted": []
+          "linesExecuted": [
+            10
+          ]
         },
         {
           "iteration": 5,
@@ -143,7 +148,9 @@
               "value": "12345"
             }
           ],
-          "linesExecuted": []
+          "linesExecuted": [
+            10
+          ]
         },
         {
           "iteration": 6,
@@ -153,7 +160,9 @@
               "value": "123456"
             }
           ],
-          "linesExecuted": []
+          "linesExecuted": [
+            10
+          ]
         },
         {
           "iteration": 7,
@@ -163,7 +172,9 @@
               "value": "1234567"
             }
           ],
-          "linesExecuted": []
+          "linesExecuted": [
+            10
+          ]
         },
         {
           "iteration": 8,
@@ -173,7 +184,9 @@
               "value": "12345678"
             }
           ],
-          "linesExecuted": []
+          "linesExecuted": [
+            10
+          ]
         },
         {
           "iteration": 9,
@@ -183,7 +196,9 @@
               "value": "123456789"
             }
           ],
-          "linesExecuted": []
+          "linesExecuted": [
+            10
+          ]
         }
       ]
     }
