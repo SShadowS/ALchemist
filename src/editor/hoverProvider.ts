@@ -28,7 +28,7 @@ export class CoverageHoverProvider implements vscode.HoverProvider {
     const lineNumber = position.line + 1; // Convert to 1-indexed
 
     // Check if we're in per-iteration stepping mode
-    const steppingLoop = this.getActiveSteppingLoop();
+    const steppingLoop = this.getActiveSteppingLoop(lineNumber);
 
     // Get the hovered word for variable matching
     const wordRange = document.getWordRangeAtPosition(position);
@@ -43,12 +43,22 @@ export class CoverageHoverProvider implements vscode.HoverProvider {
 
   /**
    * Find a loop that's actively being stepped (not in "show all" mode).
+   * Prefers the innermost loop containing the given line number.
    */
-  private getActiveSteppingLoop(): { loopId: string; iteration: number } | undefined {
+  private getActiveSteppingLoop(lineNumber: number): { loopId: string; iteration: number } | undefined {
     if (!this.iterationStore) return undefined;
     const loops = this.iterationStore.getLoops();
+    // Find the innermost loop containing this line that is being stepped
+    const stepping = loops
+      .filter(l => !this.iterationStore!.isShowingAll(l.loopId) && l.currentIteration > 0)
+      .filter(l => lineNumber >= l.loopLine && lineNumber <= l.loopEndLine)
+      .sort((a, b) => (a.loopEndLine - a.loopLine) - (b.loopEndLine - b.loopLine));
+    if (stepping.length > 0) {
+      return { loopId: stepping[0].loopId, iteration: stepping[0].currentIteration };
+    }
+    // Fallback: any loop being stepped (for lines outside all loops)
     for (const loop of loops) {
-      if (!this.iterationStore.isShowingAll(loop.loopId) && loop.currentIteration > 0) {
+      if (!this.iterationStore!.isShowingAll(loop.loopId) && loop.currentIteration > 0) {
         return { loopId: loop.loopId, iteration: loop.currentIteration };
       }
     }

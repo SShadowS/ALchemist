@@ -450,25 +450,27 @@ export class DecorationManager {
     }
 
     // Apply per-iteration messages
-    const messageCallRegex = /\bMessage\s*\(/i;
-    const callLines: number[] = [];
-    for (let i = 0; i < editor.document.lineCount; i++) {
-      if (messageCallRegex.test(editor.document.lineAt(i).text)) {
-        callLines.push(i);
+    if (step.messages.length > 0) {
+      const messageCallRegex = /\bMessage\s*\(/i;
+      const callLines: number[] = [];
+      for (let i = 0; i < editor.document.lineCount; i++) {
+        if (messageCallRegex.test(editor.document.lineAt(i).text)) {
+          callLines.push(i);
+        }
       }
-    }
-    if (callLines.length > 0 && step.messages.length > 0) {
-      const msgDecorations: vscode.DecorationOptions[] = [];
-      for (let c = 0; c < callLines.length && c < step.messages.length; c++) {
-        const range = editor.document.lineAt(callLines[c]).range;
-        msgDecorations.push({
-          range,
-          renderOptions: {
-            after: { contentText: `  \u2192 ${step.messages[c]}` },
-          },
-        });
+      if (callLines.length > 0) {
+        const msgDecorations: vscode.DecorationOptions[] = [];
+        for (let c = 0; c < callLines.length && c < step.messages.length; c++) {
+          const range = editor.document.lineAt(callLines[c]).range;
+          msgDecorations.push({
+            range,
+            renderOptions: {
+              after: { contentText: `  \u2192 ${step.messages[c]}` },
+            },
+          });
+        }
+        editor.setDecorations(this.messageDecorationType, msgDecorations);
       }
-      editor.setDecorations(this.messageDecorationType, msgDecorations);
     }
   }
 

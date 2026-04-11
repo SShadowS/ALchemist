@@ -53,7 +53,7 @@ suite('Iteration Integration', () => {
     const lenses = buildCodeLenses(store);
     assert.ok(lenses.length > 0);
     const titles = lenses.map((l: any) => l.command?.title || '');
-    assert.ok(titles.some((t: string) => t.includes('3') && t.includes('3')));
+    assert.ok(titles.some((t: string) => t.includes('3 of 3')));
 
     // 7. Show All mode
     store.showAll('L0');

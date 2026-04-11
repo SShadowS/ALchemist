@@ -207,7 +207,7 @@
         "alchemist.showIterationStepper": {
           "type": "boolean",
           "default": true,
-          "description": "Show CodeLens iteration stepper above loops."
+          "description": "Show CodeLens iteration stepper above loops. Requires window reload to take effect."
         },
         "alchemist.iterationFlashDuration": {
           "type": "number",

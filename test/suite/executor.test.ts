@@ -59,6 +59,11 @@ suite('Executor', () => {
       assert.ok(args.includes('--iteration-tracking'));
     });
 
+    test('scratch-project includes --iteration-tracking', () => {
+      const { args } = buildRunnerArgs('scratch-project', '/tmp/scratch.al', '/workspace');
+      assert.ok(args.includes('--iteration-tracking'));
+    });
+
     test('test mode includes --iteration-tracking', () => {
       const { args } = buildRunnerArgs('test', '/workspace/test.al', '/workspace');
       assert.ok(args.includes('--iteration-tracking'));
