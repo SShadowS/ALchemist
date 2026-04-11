@@ -80,6 +80,7 @@ export class Executor {
         durationMs: Date.now() - startTime,
         capturedValues: jsonResult.capturedValues,
         cached: jsonResult.cached,
+        iterations: jsonResult.iterations,
       };
 
       this.onDidFinishRun.fire(result);
@@ -95,6 +96,7 @@ export class Executor {
         durationMs: Date.now() - startTime,
         capturedValues: [],
         cached: false,
+        iterations: [],
       };
       this.onDidFinishRun.fire(result);
     }
