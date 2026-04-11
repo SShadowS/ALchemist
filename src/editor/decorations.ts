@@ -247,6 +247,8 @@ export class DecorationManager {
     const messageDecorations: vscode.DecorationOptions[] = [];
     for (const [lineIdx, msgs] of callToMessages) {
       let display: string;
+      let hoverMessage: vscode.MarkdownString | undefined;
+
       if (msgs.length === 1) {
         display = msgs[0];
       } else if (msgs.length <= 3) {
@@ -254,10 +256,17 @@ export class DecorationManager {
       } else {
         // Show first .. last (×count) for loops
         display = `${msgs[0]} \u2025 ${msgs[msgs.length - 1]}  (\u00D7${msgs.length})`;
+        // Hover shows all values
+        const md = new vscode.MarkdownString();
+        md.appendMarkdown(`**ALchemist: ${msgs.length} values**\n\n`);
+        md.appendCodeblock(msgs.join('\n'), 'text');
+        hoverMessage = md;
       }
+
       const range = editor.document.lineAt(lineIdx).range;
       messageDecorations.push({
         range,
+        hoverMessage,
         renderOptions: {
           after: { contentText: `  \u2192 ${display}` },
         },
