@@ -85,9 +85,10 @@ export function buildCodeLenses(store: IterationStore): vscode.CodeLens[] {
 export class IterationCodeLensProvider implements vscode.CodeLensProvider {
   private readonly onDidChangeEmitter = new vscode.EventEmitter<void>();
   readonly onDidChangeCodeLenses = this.onDidChangeEmitter.event;
+  private readonly storeSubscription: { dispose(): void };
 
   constructor(private readonly store: IterationStore) {
-    store.onDidChange(() => this.onDidChangeEmitter.fire());
+    this.storeSubscription = store.onDidChange(() => this.onDidChangeEmitter.fire());
   }
 
   provideCodeLenses(): vscode.CodeLens[] {
@@ -95,6 +96,7 @@ export class IterationCodeLensProvider implements vscode.CodeLensProvider {
   }
 
   dispose(): void {
+    this.storeSubscription.dispose();
     this.onDidChangeEmitter.dispose();
   }
 }
@@ -105,6 +107,7 @@ export class IterationCodeLensProvider implements vscode.CodeLensProvider {
  */
 export class IterationStepperDecoration {
   private readonly decorationType: vscode.TextEditorDecorationType;
+  private readonly storeSubscription: { dispose(): void };
 
   constructor(private readonly store: IterationStore) {
     this.decorationType = vscode.window.createTextEditorDecorationType({
@@ -115,7 +118,7 @@ export class IterationStepperDecoration {
       },
     });
 
-    store.onDidChange(() => this.refresh());
+    this.storeSubscription = store.onDidChange(() => this.refresh());
   }
 
   refresh(): void {
@@ -157,6 +160,7 @@ export class IterationStepperDecoration {
   }
 
   dispose(): void {
+    this.storeSubscription.dispose();
     this.decorationType.dispose();
   }
 }

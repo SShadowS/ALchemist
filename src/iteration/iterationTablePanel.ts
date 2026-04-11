@@ -69,15 +69,7 @@ export class IterationTablePanel {
       const isError = i === loop.errorIteration;
 
       // Detect changed values
-      const changedVars = new Set<string>();
-      if (i > 1) {
-        const prev = this.store.getStep(this.currentLoopId, i - 1);
-        for (const [name, value] of step.capturedValues) {
-          if (prev.capturedValues.get(name) !== value) {
-            changedVars.add(name);
-          }
-        }
-      }
+      const changedVars = new Set(this.store.getChangedValues(this.currentLoopId!, i));
 
       // Build variable cells
       const varCells = varNames.map((name) => {
@@ -128,6 +120,7 @@ export class IterationTablePanel {
     this.panel.webview.html = `<!DOCTYPE html>
 <html>
 <head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
 <style>
   body {
     font-family: var(--vscode-editor-font-family, monospace);

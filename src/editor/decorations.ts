@@ -374,11 +374,13 @@ export class DecorationManager {
       this.flashTimeout = undefined;
     }
 
-    // Apply per-iteration coverage gutters
+    // Apply per-iteration coverage gutters (scoped to loop line range)
     const covered: vscode.DecorationOptions[] = [];
     const uncovered: vscode.DecorationOptions[] = [];
     const dimmed: vscode.DecorationOptions[] = [];
-    for (let i = 0; i < editor.document.lineCount; i++) {
+    const covStart = loopLineRange ? loopLineRange.start - 1 : 0;
+    const covEnd = loopLineRange ? loopLineRange.end - 1 : editor.document.lineCount - 1;
+    for (let i = covStart; i <= covEnd && i < editor.document.lineCount; i++) {
       const lineNum = i + 1; // 1-based
       const range = new vscode.Range(i, 0, i, 0);
       if (step.linesExecuted.has(lineNum)) {

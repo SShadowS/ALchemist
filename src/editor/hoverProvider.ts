@@ -66,7 +66,9 @@ export class CoverageHoverProvider implements vscode.HoverProvider {
     const step = this.iterationStore!.getStep(stepping.loopId, stepping.iteration);
     const loop = this.iterationStore!.getLoop(stepping.loopId);
 
-    const hasMatchingVar = hoveredWord && step.capturedValues.has(hoveredWord);
+    const hoveredLower = hoveredWord.toLowerCase();
+    const matchingKey = hoveredWord ? Array.from(step.capturedValues.keys()).find(k => k.toLowerCase() === hoveredLower) : undefined;
+    const hasMatchingVar = !!matchingKey;
     const lineExecuted = step.linesExecuted.has(lineNumber);
 
     if (!hasMatchingVar && !lineExecuted) return undefined;
@@ -76,9 +78,9 @@ export class CoverageHoverProvider implements vscode.HoverProvider {
 
     // Show per-iteration variable value
     if (hasMatchingVar) {
-      const value = step.capturedValues.get(hoveredWord)!;
-      markdown.appendMarkdown(`**ALchemist: ${hoveredWord}** (iteration ${stepping.iteration} of ${loop.iterationCount})\n\n`);
-      markdown.appendCodeblock(`${hoveredWord} = ${value}`, 'al');
+      const value = step.capturedValues.get(matchingKey!)!;
+      markdown.appendMarkdown(`**ALchemist: ${matchingKey}** (iteration ${stepping.iteration} of ${loop.iterationCount})\n\n`);
+      markdown.appendCodeblock(`${matchingKey} = ${value}`, 'al');
       markdown.appendMarkdown('\n');
     }
 
