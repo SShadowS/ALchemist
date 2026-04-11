@@ -67,12 +67,9 @@ export class CoverageHoverProvider implements vscode.HoverProvider {
     const loop = this.iterationStore!.getLoop(stepping.loopId);
 
     const hasMatchingVar = hoveredWord && step.capturedValues.has(hoveredWord);
-    // Line is covered if it's in linesExecuted OR if it's within the loop body range
-    // (BC transpiler maps multiple body lines to the same StmtHit, so we can't rely on exact line matching)
-    const inLoopBody = lineNumber >= loop.loopLine && lineNumber <= loop.loopEndLine;
-    const lineExecuted = step.linesExecuted.size > 0 && inLoopBody;
+    const lineExecuted = step.linesExecuted.has(lineNumber);
 
-    if (!hasMatchingVar && !inLoopBody) return undefined;
+    if (!hasMatchingVar && !lineExecuted) return undefined;
 
     const markdown = new vscode.MarkdownString();
     markdown.isTrusted = true;
@@ -85,8 +82,8 @@ export class CoverageHoverProvider implements vscode.HoverProvider {
       markdown.appendMarkdown('\n');
     }
 
-    // Show per-iteration coverage — if the iteration ran, the loop body is covered
-    if (inLoopBody && step.linesExecuted.size > 0) {
+    // Show per-iteration coverage
+    if (lineExecuted) {
       markdown.appendMarkdown(`**Statement Coverage** (iteration ${stepping.iteration})\n\n`);
       markdown.appendMarkdown(`Status: Covered\n`);
     }
