@@ -81,11 +81,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       // Update Test Explorer
       testController.updateFromResult(result);
 
-      // Load iteration data
+      // Load iteration data — only update on successful runs, don't let
+      // failed runs (e.g. test controller auto-run with missing deps) clear good data
       if (result.iterations && result.iterations.length > 0) {
         iterationStore.load(result.iterations);
         vscode.commands.executeCommand('setContext', 'alchemist.hasIterationData', true);
-      } else {
+      } else if (result.exitCode === 0) {
         iterationStore.clear();
         vscode.commands.executeCommand('setContext', 'alchemist.hasIterationData', false);
       }
@@ -250,7 +251,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // --- Hover provider ---
 
   context.subscriptions.push(
-    vscode.languages.registerHoverProvider('al', new CoverageHoverProvider(decorationManager))
+    vscode.languages.registerHoverProvider('al', new CoverageHoverProvider(decorationManager, iterationStore))
   );
 
   // Push all disposables

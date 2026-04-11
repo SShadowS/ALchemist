@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { IterationStore } from './iterationStore';
+import { isScratchFile } from '../scratch/scratchManager';
 
 /**
  * Builds stepper display text for a loop.
@@ -120,6 +121,11 @@ export class IterationStepperDecoration {
   refresh(): void {
     const editor = vscode.window.activeTextEditor;
     if (!editor) return;
+    // Only show decoration stepper on scratch files — project files use CodeLens
+    if (!isScratchFile(editor.document.uri.fsPath)) {
+      this.clear(editor);
+      return;
+    }
     this.applyTo(editor);
   }
 
