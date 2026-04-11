@@ -74,10 +74,26 @@ module.exports = {
     }
   },
   Range: class Range {
-    constructor(start, end) {
-      this.start = start;
-      this.end = end;
+    constructor(startOrLine, endOrChar, endLine, endChar) {
+      if (typeof startOrLine === 'number') {
+        // 4-argument form: (startLine, startChar, endLine, endChar)
+        this.start = { line: startOrLine, character: endOrChar };
+        this.end = { line: endLine, character: endChar };
+      } else {
+        // 2-argument form: (startPosition, endPosition)
+        this.start = startOrLine;
+        this.end = endOrChar;
+      }
     }
+  },
+  CodeLens: class CodeLens {
+    constructor(range, command) {
+      this.range = range;
+      this.command = command;
+    }
+  },
+  languages: {
+    registerCodeLensProvider: () => ({ dispose: () => {} }),
   },
   Uri: {
     file: (path) => ({ fsPath: path }),
