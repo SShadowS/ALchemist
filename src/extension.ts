@@ -22,6 +22,7 @@ let scratchManager: ScratchManager;
 let testController: AlchemistTestController;
 let iterationStore: IterationStore;
 let iterationTablePanel: IterationTablePanel;
+let lastExecutionResult: import('./runner/outputParser').ExecutionResult | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   console.log('ALchemist: activating...');
@@ -76,6 +77,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (editor) {
         const wsPath = workspaceFolder?.uri.fsPath || path.dirname(editor.document.uri.fsPath);
         decorationManager.applyResults(editor, result, wsPath);
+        lastExecutionResult = result;
       }
 
       // Update Test Explorer
@@ -210,6 +212,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!editor) return;
 
     if (iterationStore.isShowingAll(loopId)) {
+      // Re-apply aggregate decorations from the last execution result
+      if (lastExecutionResult) {
+        const wsPath = workspaceFolder?.uri.fsPath || path.dirname(editor.document.uri.fsPath);
+        decorationManager.applyResults(editor, lastExecutionResult, wsPath);
+      }
       statusBar.clearIterationIndicator();
       return;
     }
