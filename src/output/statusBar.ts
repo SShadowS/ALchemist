@@ -67,6 +67,18 @@ export class StatusBarManager {
     this.item.tooltip = `ALchemist \u2014 Scratch (${result.durationMs}ms)`;
   }
 
+  setIterationIndicator(loopId: string, current: number, total: number): void {
+    // Append iteration indicator to existing text
+    const baseText = this.item.text;
+    // Remove any existing iteration indicator
+    const cleaned = baseText.replace(/\s*\u27F3\d+\/\d+$/, '');
+    this.item.text = `${cleaned} \u27F3${current}/${total}`;
+  }
+
+  clearIterationIndicator(): void {
+    this.item.text = this.item.text.replace(/\s*\u27F3\d+\/\d+$/, '');
+  }
+
   dispose(): void {
     this.item.dispose();
   }
