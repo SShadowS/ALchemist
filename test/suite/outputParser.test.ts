@@ -246,3 +246,52 @@ suite('parseJsonOutput', () => {
     assert.deepStrictEqual(result.summary, { passed: 1, failed: 1, errors: 0, total: 2 });
   });
 });
+
+suite('parseJsonOutput edge cases', () => {
+  test('extracts JSON from mixed stdout (text before JSON)', () => {
+    const mixed = [
+      'Hello from AL',
+      'Count: 42',
+      '',
+      'Timing: 831ms total',
+      '  AL transpilation   330ms',
+      '{',
+      '  "tests": [],',
+      '  "passed": 0, "failed": 0, "errors": 0, "total": 0,',
+      '  "exitCode": 0,',
+      '  "messages": ["Hello from AL", "Count: 42"]',
+      '}',
+    ].join('\n');
+    const result = parseJsonOutput(mixed);
+    assert.strictEqual(result.messages.length, 2);
+    assert.strictEqual(result.messages[0], 'Hello from AL');
+    assert.strictEqual(result.messages[1], 'Count: 42');
+  });
+
+  test('parses clean JSON without prefix text', () => {
+    const json = JSON.stringify({
+      tests: [], passed: 0, failed: 0, errors: 0, total: 0, exitCode: 0,
+      messages: ['hello']
+    });
+    const result = parseJsonOutput(json);
+    assert.strictEqual(result.messages.length, 1);
+  });
+
+  test('handles alSourceColumn in test results', () => {
+    const json = JSON.stringify({
+      tests: [{ name: 'T', status: 'fail', durationMs: 1, message: 'err', alSourceLine: 10, alSourceColumn: 5 }],
+      passed: 0, failed: 1, errors: 0, total: 1, exitCode: 1
+    });
+    const result = parseJsonOutput(json);
+    assert.strictEqual(result.tests[0].alSourceColumn, 5);
+  });
+
+  test('handles null alSourceColumn', () => {
+    const json = JSON.stringify({
+      tests: [{ name: 'T', status: 'pass', durationMs: 1, alSourceColumn: null }],
+      passed: 1, failed: 0, errors: 0, total: 1, exitCode: 0
+    });
+    const result = parseJsonOutput(json);
+    assert.strictEqual(result.tests[0].alSourceColumn, undefined);
+  });
+});

@@ -28,5 +28,24 @@ suite('ScratchManager', () => {
     test('rejects normal project file', () => {
       assert.strictEqual(isScratchFile('/workspace/src/MyCodeunit.al'), false);
     });
+
+    test('works with Windows paths', () => {
+      assert.strictEqual(isScratchFile('C:\\Users\\user\\alchemist-scratch\\scratch1.al'), true);
+    });
+
+    test('rejects paths with alchemist but not alchemist-scratch', () => {
+      assert.strictEqual(isScratchFile('/workspace/alchemist/src/main.al'), false);
+    });
+  });
+
+  suite('isProjectAware edge cases', () => {
+    test('is case-insensitive', () => {
+      assert.strictEqual(isProjectAware('//ALCHEMIST: PROJECT\ncode'), true);
+      assert.strictEqual(isProjectAware('//Alchemist: Project\ncode'), true);
+    });
+
+    test('handles empty string', () => {
+      assert.strictEqual(isProjectAware(''), false);
+    });
   });
 });

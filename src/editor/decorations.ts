@@ -2,6 +2,56 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { ExecutionResult, CoverageEntry, CapturedValue } from '../runner/outputParser';
 
+/**
+ * Distributes messages across call sites and formats them for display.
+ * Returns a map from call index (0-based) to its display string and optional allValues for hover.
+ */
+export function distributeMessages(callCount: number, messages: string[]): Map<number, { display: string; allValues?: string[] }> {
+  const result = new Map<number, { display: string; allValues?: string[] }>();
+  if (callCount <= 0 || messages.length === 0) return result;
+
+  const callToMessages = new Map<number, string[]>();
+
+  if (callCount === 1) {
+    callToMessages.set(0, messages);
+  } else {
+    // First call gets first message, last call gets last message
+    callToMessages.set(0, [messages[0]]);
+    callToMessages.set(callCount - 1, [messages[messages.length - 1]]);
+
+    const middleCalls = callCount - 2;
+    const middleMessages = messages.length - 2;
+
+    if (middleCalls > 0 && middleMessages > 0) {
+      const batchSize = Math.ceil(middleMessages / middleCalls);
+      for (let c = 0; c < middleCalls; c++) {
+        const start = 1 + c * batchSize;
+        const end = Math.min(start + batchSize, messages.length - 1);
+        callToMessages.set(c + 1, messages.slice(start, end));
+      }
+    }
+  }
+
+  for (const [callIdx, msgs] of callToMessages) {
+    let display: string;
+    let allValues: string[] | undefined;
+
+    if (msgs.length === 1) {
+      display = msgs[0];
+    } else if (msgs.length <= 3) {
+      display = msgs.join(' | ');
+    } else {
+      // Show first .. last (x count) for loops
+      display = `${msgs[0]} \u2025 ${msgs[msgs.length - 1]}  (\u00D7${msgs.length})`;
+      allValues = msgs;
+    }
+
+    result.set(callIdx, { display, allValues });
+  }
+
+  return result;
+}
+
 export class DecorationManager {
   private readonly coveredDecorationType: vscode.TextEditorDecorationType;
   private readonly uncoveredDecorationType: vscode.TextEditorDecorationType;
@@ -204,8 +254,6 @@ export class DecorationManager {
   }
 
   private applyInlineMessages(editor: vscode.TextEditor, messages: string[]): void {
-    const MAX_INLINE_VALUES = 100;
-
     // Find all Message() call line numbers in order
     const messageCallRegex = /\bMessage\s*\(/i;
     const callLines: number[] = [];
@@ -218,48 +266,18 @@ export class DecorationManager {
 
     if (callLines.length === 0 || messages.length === 0) return;
 
-    // Distribute messages across calls: each call gets a batch.
-    // With N calls and M messages, divide M into N consecutive batches.
-    // Show ALL values from each batch space-separated (like Quokka).
-    const callToMessages = new Map<number, string[]>();
-
-    if (callLines.length === 1) {
-      callToMessages.set(callLines[0], messages);
-    } else {
-      // Distribute: first call gets 1 message, last call gets 1 message,
-      // middle calls split the remaining messages evenly
-      const middleCalls = callLines.length - 2;
-      const middleMessages = messages.length - 2;
-
-      callToMessages.set(callLines[0], [messages[0]]);
-      callToMessages.set(callLines[callLines.length - 1], [messages[messages.length - 1]]);
-
-      if (middleCalls > 0 && middleMessages > 0) {
-        const batchSize = Math.ceil(middleMessages / middleCalls);
-        for (let c = 0; c < middleCalls; c++) {
-          const start = 1 + c * batchSize;
-          const end = Math.min(start + batchSize, messages.length - 1);
-          callToMessages.set(callLines[c + 1], messages.slice(start, end));
-        }
-      }
-    }
+    // Use extracted distribution logic
+    const distributed = distributeMessages(callLines.length, messages);
 
     const messageDecorations: vscode.DecorationOptions[] = [];
-    for (const [lineIdx, msgs] of callToMessages) {
-      let display: string;
+    for (const [callIdx, entry] of distributed) {
+      const lineIdx = callLines[callIdx];
       let hoverMessage: vscode.MarkdownString | undefined;
 
-      if (msgs.length === 1) {
-        display = msgs[0];
-      } else if (msgs.length <= 3) {
-        display = msgs.join(' | ');
-      } else {
-        // Show first .. last (×count) for loops
-        display = `${msgs[0]} \u2025 ${msgs[msgs.length - 1]}  (\u00D7${msgs.length})`;
-        // Hover shows all values
+      if (entry.allValues) {
         const md = new vscode.MarkdownString();
-        md.appendMarkdown(`**ALchemist: ${msgs.length} values**\n\n`);
-        md.appendCodeblock(msgs.join('\n'), 'text');
+        md.appendMarkdown(`**ALchemist: ${entry.allValues.length} values**\n\n`);
+        md.appendCodeblock(entry.allValues.join('\n'), 'text');
         hoverMessage = md;
       }
 
@@ -268,7 +286,7 @@ export class DecorationManager {
         range,
         hoverMessage,
         renderOptions: {
-          after: { contentText: `  \u2192 ${display}` },
+          after: { contentText: `  \u2192 ${entry.display}` },
         },
       });
     }

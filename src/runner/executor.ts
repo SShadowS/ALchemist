@@ -7,6 +7,31 @@ import { parseJsonOutput, parseCoberturaXml, ExecutionResult } from './outputPar
 
 export type ExecutionMode = 'scratch-standalone' | 'scratch-project' | 'test';
 
+export function buildRunnerArgs(mode: ExecutionMode, filePath: string, workspacePath?: string, procedureName?: string): { args: string[]; cwd: string } {
+  switch (mode) {
+    case 'scratch-standalone':
+      return {
+        args: ['--output-json', '--capture-values', filePath],
+        cwd: path.dirname(filePath),
+      };
+    case 'scratch-project': {
+      const srcPath = workspacePath || path.dirname(filePath);
+      return {
+        args: ['--output-json', '--capture-values', '--coverage', srcPath, filePath],
+        cwd: srcPath,
+      };
+    }
+    case 'test': {
+      const cwd = workspacePath || path.dirname(filePath);
+      const args = ['--output-json', '--capture-values', '--coverage', cwd];
+      if (procedureName) {
+        args.splice(args.length - 1, 0, '--run', procedureName);
+      }
+      return { args, cwd };
+    }
+  }
+}
+
 export class Executor {
   private currentProcess: cp.ChildProcess | undefined;
   private readonly onDidStartRun = new vscode.EventEmitter<ExecutionMode>();
@@ -83,28 +108,7 @@ export class Executor {
   }
 
   private buildArgs(mode: ExecutionMode, filePath: string, workspacePath?: string, procedureName?: string): { args: string[]; cwd: string } {
-    switch (mode) {
-      case 'scratch-standalone':
-        return {
-          args: ['--output-json', '--capture-values', filePath],
-          cwd: path.dirname(filePath),
-        };
-      case 'scratch-project': {
-        const srcPath = workspacePath || path.dirname(filePath);
-        return {
-          args: ['--output-json', '--capture-values', '--coverage', srcPath, filePath],
-          cwd: srcPath,
-        };
-      }
-      case 'test': {
-        const cwd = workspacePath || path.dirname(filePath);
-        const args = ['--output-json', '--capture-values', '--coverage', cwd];
-        if (procedureName) {
-          args.splice(args.length - 1, 0, '--run', procedureName);
-        }
-        return { args, cwd };
-      }
-    }
+    return buildRunnerArgs(mode, filePath, workspacePath, procedureName);
   }
 
   private spawn(command: string, args: string[], cwd: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
