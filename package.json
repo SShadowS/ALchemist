@@ -3,20 +3,28 @@
   "displayName": "ALchemist",
   "description": "Quokka-style live execution and inline feedback for AL (Business Central)",
   "version": "0.1.0",
-  "publisher": "alchemist",
+  "publisher": "SShadowSdk",
   "license": "MIT",
+  "icon": "resources/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/TODO/alchemist"
+    "url": "https://github.com/SShadowS/ALchemist"
+  },
+  "homepage": "https://github.com/SShadowS/ALchemist#readme",
+  "bugs": {
+    "url": "https://github.com/SShadowS/ALchemist/issues"
   },
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
     "Testing",
-    "Debuggers",
     "Other"
   ],
+  "galleryBanner": {
+    "color": "#1a1a2e",
+    "theme": "dark"
+  },
   "keywords": [
     "AL",
     "Business Central",
