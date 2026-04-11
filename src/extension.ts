@@ -18,21 +18,27 @@ let scratchManager: ScratchManager;
 let testController: AlchemistTestController;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  // Initialize components
-  runnerManager = new AlRunnerManager();
-  executor = new Executor(runnerManager);
-  decorationManager = new DecorationManager(context.extensionPath);
-  outputChannel = new AlchemistOutputChannel();
-  statusBar = new StatusBarManager();
-  scratchManager = new ScratchManager(context.globalStorageUri.fsPath);
-  testController = new AlchemistTestController(executor);
+  console.log('ALchemist: activating...');
 
-  // Ensure AL.Runner is available
   try {
-    await runnerManager.ensureInstalled();
-  } catch {
-    // Will show error when user tries to run
+    // Initialize components
+    runnerManager = new AlRunnerManager();
+    executor = new Executor(runnerManager);
+    decorationManager = new DecorationManager(context.extensionPath);
+    outputChannel = new AlchemistOutputChannel();
+    statusBar = new StatusBarManager();
+    scratchManager = new ScratchManager(context.globalStorageUri.fsPath);
+    testController = new AlchemistTestController(executor);
+  } catch (err: any) {
+    console.error('ALchemist: failed to initialize components:', err);
+    vscode.window.showErrorMessage(`ALchemist failed to initialize: ${err.message}`);
+    return;
   }
+
+  // Ensure AL.Runner is available (non-blocking — don't delay command registration)
+  runnerManager.ensureInstalled().catch(() => {
+    // Will show error when user tries to run
+  });
 
   // Check for updates (non-blocking)
   runnerManager.checkForUpdates();
@@ -117,9 +123,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // --- Commands ---
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('alchemist.newScratchFile', () =>
-      scratchManager.newScratchFile(context.extensionPath)
-    ),
+    vscode.commands.registerCommand('alchemist.newScratchFile', async () => {
+      try {
+        await scratchManager.newScratchFile(context.extensionPath);
+      } catch (err: any) {
+        console.error('ALchemist: newScratchFile failed:', err);
+        vscode.window.showErrorMessage(`ALchemist: Failed to create scratch file: ${err.message}`);
+      }
+    }),
     vscode.commands.registerCommand('alchemist.toggleProjectContext', () =>
       scratchManager.toggleProjectContext()
     ),

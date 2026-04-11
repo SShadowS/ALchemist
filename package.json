@@ -1,6 +1,6 @@
 {
-  "name": "alchemist",
-  "displayName": "ALchemist",
+  "name": "al-chemist",
+  "displayName": "ALchemist - AL Live Runner",
   "description": "Quokka-style live execution and inline feedback for AL (Business Central)",
   "version": "0.1.0",
   "publisher": "SShadowSdk",

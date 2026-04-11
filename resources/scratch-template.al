@@ -1,6 +1,6 @@
 codeunit 50000 Scratch
 {
-    procedure Run()
+    trigger OnRun()
     var
 
     begin
