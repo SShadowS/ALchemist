@@ -28,7 +28,7 @@ suite('IterationStore', () => {
     assert.strictEqual(loops.length, 1);
     assert.strictEqual(loops[0].loopId, 'L0');
     assert.strictEqual(loops[0].iterationCount, 5);
-    assert.strictEqual(loops[0].currentIteration, 1);
+    assert.strictEqual(loops[0].currentIteration, 0); // starts in "show all" mode
   });
 
   test('getLoop returns loop info', () => {
@@ -120,9 +120,16 @@ suite('IterationStore', () => {
     assert.strictEqual(store.isShowingAll('L0'), true);
   });
 
-  test('isShowingAll returns false when stepping', () => {
+  test('isShowingAll returns true after load (default is show-all)', () => {
     const store = new IterationStore();
     store.load(makeSingleLoop());
+    assert.strictEqual(store.isShowingAll('L0'), true);
+  });
+
+  test('isShowingAll returns false after stepping', () => {
+    const store = new IterationStore();
+    store.load(makeSingleLoop());
+    store.setIteration('L0', 1);
     assert.strictEqual(store.isShowingAll('L0'), false);
   });
 

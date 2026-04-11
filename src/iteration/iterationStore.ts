@@ -23,8 +23,9 @@ export class IterationStore {
         parentLoopId: iter.parentLoopId,
         parentIteration: iter.parentIteration,
         iterationCount: iter.iterationCount,
-        // Single-iteration loops start in "show all" mode (0) — CodeLens stepper only shows for 2+ iterations
-        currentIteration: iter.iterationCount > 1 ? 1 : 0,
+        // Start in "show all" mode (0) — aggregate values are already displayed by applyResults().
+        // User steps in via keyboard or CodeLens when they want per-iteration view.
+        currentIteration: 0,
       };
 
       this.loops.set(iter.loopId, { info, steps });
