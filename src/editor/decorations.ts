@@ -178,7 +178,10 @@ export class DecorationManager {
         }
 
         if (lineNumber !== undefined && lineNumber >= 0 && lineNumber < editor.document.lineCount) {
-          const range = editor.document.lineAt(lineNumber).range;
+          // Use column for precise positioning if available
+          const col = test.alSourceColumn !== undefined ? test.alSourceColumn - 1 : 0;
+          const startPos = new vscode.Position(lineNumber, col);
+          const range = new vscode.Range(startPos, editor.document.lineAt(lineNumber).range.end);
           errorDecorations.push({
             range,
             renderOptions: {

@@ -8,6 +8,18 @@ export class CoverageHoverProvider implements vscode.HoverProvider {
     document: vscode.TextDocument,
     position: vscode.Position,
   ): vscode.Hover | undefined {
+    try {
+      return this.buildHover(document, position);
+    } catch (err: any) {
+      console.error('ALchemist hover error:', err);
+      return undefined;
+    }
+  }
+
+  private buildHover(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+  ): vscode.Hover | undefined {
     const filePath = document.uri.fsPath;
     const lineNumber = position.line + 1; // Convert to 1-indexed
     const lineCoverage = this.decorationManager.getLineCoverage(filePath);

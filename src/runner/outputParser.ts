@@ -6,7 +6,8 @@ export interface TestResult {
   durationMs: number | undefined;
   message: string | undefined;
   stackTrace: string | undefined;
-  alSourceLine: number | undefined;  // 1-based line in AL source
+  alSourceLine: number | undefined;    // 1-based line in AL source
+  alSourceColumn: number | undefined;  // 1-based column in AL source
 }
 
 export interface CapturedValue {
@@ -79,6 +80,7 @@ export function parseTestOutput(stdout: string): { tests: TestResult[]; messages
         message: undefined,
         stackTrace: undefined,
         alSourceLine: undefined,
+        alSourceColumn: undefined,
       });
       i++;
       continue;
@@ -94,6 +96,7 @@ export function parseTestOutput(stdout: string): { tests: TestResult[]; messages
         message,
         stackTrace,
         alSourceLine: undefined,
+        alSourceColumn: undefined,
       });
       i = nextIndex;
       continue;
@@ -109,6 +112,7 @@ export function parseTestOutput(stdout: string): { tests: TestResult[]; messages
         message,
         stackTrace,
         alSourceLine: undefined,
+        alSourceColumn: undefined,
       });
       i = nextIndex;
       continue;
@@ -158,6 +162,7 @@ export function parseJsonOutput(json: string): {
     message: t.message ?? undefined,
     stackTrace: t.stackTrace ?? undefined,
     alSourceLine: t.alSourceLine ?? undefined,
+    alSourceColumn: t.alSourceColumn ?? undefined,
   }));
 
   const summary: RunSummary = {

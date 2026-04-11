@@ -62,7 +62,8 @@ export class AlchemistTestController {
       } else if (testResult.status === 'failed') {
         const message = new vscode.TestMessage(testResult.message || 'Test failed');
         if (testResult.alSourceLine && item.uri) {
-          message.location = new vscode.Location(item.uri, new vscode.Position(testResult.alSourceLine - 1, 0));
+          const col = testResult.alSourceColumn ? testResult.alSourceColumn - 1 : 0;
+          message.location = new vscode.Location(item.uri, new vscode.Position(testResult.alSourceLine - 1, col));
         }
         run.failed(item, message, testResult.durationMs);
       } else {
