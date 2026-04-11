@@ -23,6 +23,7 @@ export class IterationStore {
         parentLoopId: iter.parentLoopId,
         parentIteration: iter.parentIteration,
         iterationCount: iter.iterationCount,
+        // Single-iteration loops start in "show all" mode (0) — CodeLens stepper only shows for 2+ iterations
         currentIteration: iter.iterationCount > 1 ? 1 : 0,
       };
 
@@ -46,7 +47,7 @@ export class IterationStore {
     if (!entry) throw new Error(`Unknown loopId: ${loopId}`);
     const step = entry.steps.find((s) => s.iteration === iteration);
     if (!step) throw new Error(`No step ${iteration} for loop ${loopId}`);
-    return step;
+    return { ...step, capturedValues: new Map(step.capturedValues), linesExecuted: new Set(step.linesExecuted) };
   }
 
   getCurrentIteration(loopId: string): number {
