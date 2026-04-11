@@ -71,6 +71,30 @@
       {
         "command": "alchemist.showOutput",
         "title": "ALchemist: Show Output"
+      },
+      {
+        "command": "alchemist.iterationNext",
+        "title": "ALchemist: Next Iteration"
+      },
+      {
+        "command": "alchemist.iterationPrev",
+        "title": "ALchemist: Previous Iteration"
+      },
+      {
+        "command": "alchemist.iterationFirst",
+        "title": "ALchemist: First Iteration"
+      },
+      {
+        "command": "alchemist.iterationLast",
+        "title": "ALchemist: Last Iteration"
+      },
+      {
+        "command": "alchemist.iterationShowAll",
+        "title": "ALchemist: Show All Iterations"
+      },
+      {
+        "command": "alchemist.iterationTable",
+        "title": "ALchemist: Open Iteration Table"
       }
     ],
     "keybindings": [
@@ -85,6 +109,36 @@
       {
         "command": "alchemist.clearDecorations",
         "key": "ctrl+shift+a c"
+      },
+      {
+        "command": "alchemist.iterationNext",
+        "key": "ctrl+shift+a right",
+        "when": "alchemist.hasIterationData"
+      },
+      {
+        "command": "alchemist.iterationPrev",
+        "key": "ctrl+shift+a left",
+        "when": "alchemist.hasIterationData"
+      },
+      {
+        "command": "alchemist.iterationFirst",
+        "key": "ctrl+shift+a home",
+        "when": "alchemist.hasIterationData"
+      },
+      {
+        "command": "alchemist.iterationLast",
+        "key": "ctrl+shift+a end",
+        "when": "alchemist.hasIterationData"
+      },
+      {
+        "command": "alchemist.iterationShowAll",
+        "key": "ctrl+shift+a a",
+        "when": "alchemist.hasIterationData"
+      },
+      {
+        "command": "alchemist.iterationTable",
+        "key": "ctrl+shift+a t",
+        "when": "alchemist.hasIterationData"
       }
     ],
     "configuration": {
@@ -149,6 +203,16 @@
           "type": "boolean",
           "default": true,
           "description": "Show captured variable values inline."
+        },
+        "alchemist.showIterationStepper": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show CodeLens iteration stepper above loops."
+        },
+        "alchemist.iterationFlashDuration": {
+          "type": "number",
+          "default": 600,
+          "description": "Duration in ms for the value change flash when stepping (0 to disable)."
         }
       }
     }

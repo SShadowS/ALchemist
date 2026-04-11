@@ -8,6 +8,10 @@ import { AlchemistOutputChannel } from './output/outputChannel';
 import { StatusBarManager } from './output/statusBar';
 import { ScratchManager, isScratchFile, isProjectAware } from './scratch/scratchManager';
 import { AlchemistTestController } from './testing/testController';
+import { IterationStore } from './iteration/iterationStore';
+import { IterationCodeLensProvider } from './iteration/iterationCodeLensProvider';
+import { registerIterationCommands } from './iteration/iterationCommands';
+import { IterationTablePanel } from './iteration/iterationTablePanel';
 
 let runnerManager: AlRunnerManager;
 let executor: Executor;
@@ -16,6 +20,8 @@ let outputChannel: AlchemistOutputChannel;
 let statusBar: StatusBarManager;
 let scratchManager: ScratchManager;
 let testController: AlchemistTestController;
+let iterationStore: IterationStore;
+let iterationTablePanel: IterationTablePanel;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   console.log('ALchemist: activating...');
@@ -29,6 +35,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     statusBar = new StatusBarManager();
     scratchManager = new ScratchManager(context.globalStorageUri.fsPath);
     testController = new AlchemistTestController(executor);
+    iterationStore = new IterationStore();
+    iterationTablePanel = new IterationTablePanel(iterationStore, context.extensionUri);
   } catch (err: any) {
     console.error('ALchemist: failed to initialize components:', err);
     vscode.window.showErrorMessage(`ALchemist failed to initialize: ${err.message}`);
@@ -72,6 +80,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       // Update Test Explorer
       testController.updateFromResult(result);
+
+      // Load iteration data
+      if (result.iterations && result.iterations.length > 0) {
+        iterationStore.load(result.iterations);
+        vscode.commands.executeCommand('setContext', 'alchemist.hasIterationData', true);
+      } else {
+        iterationStore.clear();
+        vscode.commands.executeCommand('setContext', 'alchemist.hasIterationData', false);
+      }
     })
   );
 
@@ -175,12 +192,55 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('alchemist.clearDecorations', () => {
       decorationManager.clearAll();
+      iterationStore.clear();
+      vscode.commands.executeCommand('setContext', 'alchemist.hasIterationData', false);
+      statusBar.clearIterationIndicator();
       statusBar.setIdle();
     }),
     vscode.commands.registerCommand('alchemist.showOutput', () => {
       outputChannel.show();
     })
   );
+
+  // --- Iteration navigation ---
+
+  const onIterationChanged = (loopId: string) => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) return;
+
+    if (iterationStore.isShowingAll(loopId)) {
+      statusBar.clearIterationIndicator();
+      return;
+    }
+
+    const loop = iterationStore.getLoop(loopId);
+    const step = iterationStore.getStep(loopId, loop.currentIteration);
+    const config = vscode.workspace.getConfiguration('alchemist');
+    const flashMs = config.get<number>('iterationFlashDuration', 600);
+    const changedVars = iterationStore.getChangedValues(loopId, loop.currentIteration);
+
+    decorationManager.applyIterationView(editor, step, changedVars, flashMs);
+    statusBar.setIterationIndicator(loopId, loop.currentIteration, loop.iterationCount);
+  };
+
+  registerIterationCommands(context, iterationStore, onIterationChanged);
+
+  // Iteration table command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('alchemist.iterationTable', (loopId?: string) => {
+      const id = loopId || iterationStore.getLoops()[0]?.loopId;
+      if (id) iterationTablePanel.show(id);
+    })
+  );
+
+  // CodeLens provider (for AL files)
+  if (vscode.workspace.getConfiguration('alchemist').get<boolean>('showIterationStepper', true)) {
+    const codeLensProvider = new IterationCodeLensProvider(iterationStore);
+    context.subscriptions.push(
+      vscode.languages.registerCodeLensProvider({ language: 'al' }, codeLensProvider),
+      codeLensProvider
+    );
+  }
 
   // --- Hover provider ---
 
@@ -194,7 +254,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     decorationManager,
     outputChannel,
     statusBar,
-    testController
+    testController,
+    iterationTablePanel
   );
 }
 
