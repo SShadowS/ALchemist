@@ -2,8 +2,20 @@ import * as vscode from 'vscode';
 import { IterationStore } from './iterationStore';
 
 /**
+ * Builds stepper display text for a loop.
+ * Exported for unit testing.
+ */
+export function buildStepperText(store: IterationStore, loopId: string): string {
+  const loop = store.getLoop(loopId);
+  if (store.isShowingAll(loopId)) {
+    return '\u25C0  All  \u25B6  |  Show All  |  Table';
+  }
+  return `\u25C0  ${loop.currentIteration} of ${loop.iterationCount}  \u25B6  |  Show All  |  Table`;
+}
+
+/**
  * Builds CodeLens items from the current IterationStore state.
- * Exported separately for unit testing (no VS Code dependency in the logic).
+ * Exported separately for unit testing.
  */
 export function buildCodeLenses(store: IterationStore): vscode.CodeLens[] {
   const loops = store.getLoops();
@@ -16,35 +28,34 @@ export function buildCodeLenses(store: IterationStore): vscode.CodeLens[] {
     const range = new vscode.Range(line, 0, line, 0);
 
     if (store.isShowingAll(loop.loopId)) {
-      // "All" mode — show re-entry point
       lenses.push(new vscode.CodeLens(range, {
-        title: '◀',
+        title: '\u25C0',
         command: 'alchemist.iterationPrev',
         arguments: [loop.loopId],
       }));
       lenses.push(new vscode.CodeLens(range, {
-        title: '⟨ All ⟩',
+        title: '\u27E8 All \u27E9',
         command: 'alchemist.iterationShowAll',
         arguments: [loop.loopId],
       }));
       lenses.push(new vscode.CodeLens(range, {
-        title: '▶',
+        title: '\u25B6',
         command: 'alchemist.iterationNext',
         arguments: [loop.loopId],
       }));
     } else {
       lenses.push(new vscode.CodeLens(range, {
-        title: '◀',
+        title: '\u25C0',
         command: 'alchemist.iterationPrev',
         arguments: [loop.loopId],
       }));
       lenses.push(new vscode.CodeLens(range, {
-        title: `⟨ ${loop.currentIteration} of ${loop.iterationCount} ⟩`,
-        command: '',
-        arguments: [],
+        title: `\u27E8 ${loop.currentIteration} of ${loop.iterationCount} \u27E9`,
+        command: 'alchemist.iterationFirst',
+        arguments: [loop.loopId],
       }));
       lenses.push(new vscode.CodeLens(range, {
-        title: '▶',
+        title: '\u25B6',
         command: 'alchemist.iterationNext',
         arguments: [loop.loopId],
       }));
@@ -66,6 +77,10 @@ export function buildCodeLenses(store: IterationStore): vscode.CodeLens[] {
   return lenses;
 }
 
+/**
+ * CodeLens provider for iteration steppers — works in project files
+ * where VS Code fully activates language features.
+ */
 export class IterationCodeLensProvider implements vscode.CodeLensProvider {
   private readonly onDidChangeEmitter = new vscode.EventEmitter<void>();
   readonly onDidChangeCodeLenses = this.onDidChangeEmitter.event;
@@ -80,5 +95,62 @@ export class IterationCodeLensProvider implements vscode.CodeLensProvider {
 
   dispose(): void {
     this.onDidChangeEmitter.dispose();
+  }
+}
+
+/**
+ * Decoration-based iteration stepper — fallback for scratch files
+ * outside workspace folders where CodeLens doesn't render.
+ */
+export class IterationStepperDecoration {
+  private readonly decorationType: vscode.TextEditorDecorationType;
+
+  constructor(private readonly store: IterationStore) {
+    this.decorationType = vscode.window.createTextEditorDecorationType({
+      after: {
+        color: '#569cd6',
+        margin: '0 0 0 16px',
+        fontStyle: 'normal',
+      },
+    });
+
+    store.onDidChange(() => this.refresh());
+  }
+
+  refresh(): void {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) return;
+    this.applyTo(editor);
+  }
+
+  applyTo(editor: vscode.TextEditor): void {
+    const loops = this.store.getLoops();
+    const decorations: vscode.DecorationOptions[] = [];
+
+    for (const loop of loops) {
+      if (loop.iterationCount < 2) continue;
+
+      const line = loop.loopLine - 1;
+      if (line < 0 || line >= editor.document.lineCount) continue;
+
+      const text = buildStepperText(this.store, loop.loopId);
+      const range = editor.document.lineAt(line).range;
+      decorations.push({
+        range,
+        renderOptions: {
+          after: { contentText: `  ${text}` },
+        },
+      });
+    }
+
+    editor.setDecorations(this.decorationType, decorations);
+  }
+
+  clear(editor: vscode.TextEditor): void {
+    editor.setDecorations(this.decorationType, []);
+  }
+
+  dispose(): void {
+    this.decorationType.dispose();
   }
 }

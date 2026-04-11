@@ -7,7 +7,10 @@
       "request": "launch",
       "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
       "outFiles": ["${workspaceFolder}/dist/**/*.js"],
-      "preLaunchTask": "${defaultBuildTask}"
+      "preLaunchTask": "${defaultBuildTask}",
+      "env": {
+        "ALCHEMIST_RUNNER_PATH": "U:\\Git\\BusinessCentral.AL.Runner\\AlRunner\\bin\\Release\\net8.0\\AlRunner.exe"
+      }
     },
     {
       "name": "Run Tests",

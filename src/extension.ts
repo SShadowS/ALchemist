@@ -9,7 +9,7 @@ import { StatusBarManager } from './output/statusBar';
 import { ScratchManager, isScratchFile, isProjectAware } from './scratch/scratchManager';
 import { AlchemistTestController } from './testing/testController';
 import { IterationStore } from './iteration/iterationStore';
-import { IterationCodeLensProvider } from './iteration/iterationCodeLensProvider';
+import { IterationCodeLensProvider, IterationStepperDecoration } from './iteration/iterationCodeLensProvider';
 import { registerIterationCommands } from './iteration/iterationCommands';
 import { IterationTablePanel } from './iteration/iterationTablePanel';
 
@@ -233,13 +233,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
-  // CodeLens provider (for AL files)
+  // Iteration stepper — CodeLens for project files, decoration for scratch files
   if (vscode.workspace.getConfiguration('alchemist').get<boolean>('showIterationStepper', true)) {
+    // CodeLens works in project files (inside workspace folders)
     const codeLensProvider = new IterationCodeLensProvider(iterationStore);
     context.subscriptions.push(
       vscode.languages.registerCodeLensProvider({ language: 'al' }, codeLensProvider),
       codeLensProvider
     );
+
+    // Decoration-based stepper as fallback for scratch files (outside workspace)
+    const stepperDecoration = new IterationStepperDecoration(iterationStore);
+    context.subscriptions.push(stepperDecoration);
   }
 
   // --- Hover provider ---

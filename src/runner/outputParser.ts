@@ -152,6 +152,12 @@ export function parseJsonOutput(json: string): {
   const jsonStr = jsonStart >= 0 ? json.substring(jsonStart + 1) : json;
   const data = JSON.parse(jsonStr);
 
+  if (data.version) {
+    console.log(`ALchemist: AL.Runner version ${data.version}, iterations: ${data.iterations?.length ?? 0}`);
+  } else {
+    console.log('ALchemist: AL.Runner version unknown (no version field — using NuGet runner?)');
+  }
+
   const statusMap: Record<string, 'passed' | 'failed' | 'errored'> = {
     pass: 'passed',
     fail: 'failed',
