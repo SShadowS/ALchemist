@@ -118,6 +118,7 @@ export class IterationStepperDecoration {
   private readonly storeSubscription: { dispose(): void };
   private readonly editorSubscription: vscode.Disposable;
   private readonly documentSubscription: vscode.Disposable;
+  private refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(private readonly store: IterationStore) {
     this.decorationType = vscode.window.createTextEditorDecorationType({
@@ -130,7 +131,17 @@ export class IterationStepperDecoration {
 
     this.storeSubscription = store.onDidChange(() => this.refresh());
     this.editorSubscription = vscode.window.onDidChangeActiveTextEditor(() => this.refresh());
-    this.documentSubscription = vscode.workspace.onDidChangeTextDocument(() => this.refresh());
+    this.documentSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
+      // Only refresh when the active editor's document changes, debounced
+      if (e.document === vscode.window.activeTextEditor?.document) {
+        this.debouncedRefresh();
+      }
+    });
+  }
+
+  private debouncedRefresh(): void {
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+    this.refreshTimer = setTimeout(() => this.refresh(), 100);
   }
 
   refresh(): void {
