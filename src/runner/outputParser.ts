@@ -190,6 +190,7 @@ export function parseJsonOutput(json: string): {
 
   const iterations: IterationData[] = (data.iterations || []).map((iter: any) => ({
     loopId: iter.loopId,
+    sourceFile: iter.sourceFile ?? '',
     loopLine: iter.loopLine,
     loopEndLine: iter.loopEndLine,
     parentLoopId: iter.parentLoopId ?? null,

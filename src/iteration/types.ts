@@ -9,6 +9,7 @@ export interface IterationStepData {
 
 export interface IterationData {
   loopId: string;
+  sourceFile: string;
   loopLine: number;
   loopEndLine: number;
   parentLoopId: string | null;
@@ -19,6 +20,7 @@ export interface IterationData {
 
 export interface LoopInfo {
   loopId: string;
+  sourceFile: string;
   loopLine: number;
   loopEndLine: number;
   parentLoopId: string | null;
