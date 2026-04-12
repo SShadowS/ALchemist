@@ -3,8 +3,8 @@ import { findLoopAtCursor } from '../../src/iteration/iterationCommands';
 import { LoopInfo } from '../../src/iteration/types';
 
 const loops: LoopInfo[] = [
-  { loopId: 'L0', loopLine: 3, loopEndLine: 20, parentLoopId: null, parentIteration: null, iterationCount: 5, currentIteration: 1 },
-  { loopId: 'L1', loopLine: 8, loopEndLine: 15, parentLoopId: 'L0', parentIteration: null, iterationCount: 3, currentIteration: 1 },
+  { loopId: 'L0', sourceFile: 'src/Test.al', loopLine: 3, loopEndLine: 20, parentLoopId: null, parentIteration: null, iterationCount: 5, currentIteration: 1 },
+  { loopId: 'L1', sourceFile: 'src/Test.al', loopLine: 8, loopEndLine: 15, parentLoopId: 'L0', parentIteration: null, iterationCount: 3, currentIteration: 1 },
 ];
 
 suite('iterationCommands', () => {

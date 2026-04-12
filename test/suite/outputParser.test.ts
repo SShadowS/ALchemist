@@ -302,7 +302,7 @@ suite('parseJsonOutput — iterations', () => {
       tests: [{ name: 'Test', status: 'pass', durationMs: 1 }],
       passed: 1, failed: 0, errors: 0, total: 1, exitCode: 0,
       iterations: [{
-        loopId: 'L0', loopLine: 3, loopEndLine: 10,
+        loopId: 'L0', sourceFile: 'src/Test.al', loopLine: 3, loopEndLine: 10,
         parentLoopId: null, parentIteration: null, iterationCount: 3,
         steps: [
           { iteration: 1, capturedValues: [{ variableName: 'i', value: '1' }], messages: ['msg1'], linesExecuted: [3, 4, 5] },
@@ -319,6 +319,7 @@ suite('parseJsonOutput — iterations', () => {
     assert.strictEqual(result.iterations[0].steps[0].capturedValues[0].value, '1');
     assert.deepStrictEqual(result.iterations[0].steps[1].messages, ['msg2']);
     assert.deepStrictEqual(result.iterations[0].steps[2].linesExecuted, [3, 4, 5]);
+    assert.strictEqual(result.iterations[0].sourceFile, 'src/Test.al');
   });
 
   test('handles missing iterations field gracefully', () => {
@@ -333,8 +334,8 @@ suite('parseJsonOutput — iterations', () => {
     const json = JSON.stringify({
       tests: [], passed: 0, failed: 0, errors: 0, total: 0, exitCode: 0,
       iterations: [
-        { loopId: 'L0', loopLine: 3, loopEndLine: 12, parentLoopId: null, parentIteration: null, iterationCount: 2, steps: [] },
-        { loopId: 'L1', loopLine: 5, loopEndLine: 9, parentLoopId: 'L0', parentIteration: 1, iterationCount: 4, steps: [] },
+        { loopId: 'L0', sourceFile: 'src/Test.al', loopLine: 3, loopEndLine: 12, parentLoopId: null, parentIteration: null, iterationCount: 2, steps: [] },
+        { loopId: 'L1', sourceFile: 'src/Test.al', loopLine: 5, loopEndLine: 9, parentLoopId: 'L0', parentIteration: 1, iterationCount: 4, steps: [] },
       ],
     });
     const result = parseJsonOutput(json);

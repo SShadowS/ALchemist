@@ -1,9 +1,13 @@
 // test/suite/iterationIntegration.test.ts
 import * as assert from 'assert';
+import * as path from 'path';
 import { parseJsonOutput } from '../../src/runner/outputParser';
 import { IterationStore } from '../../src/iteration/iterationStore';
 import { buildCodeLenses } from '../../src/iteration/iterationCodeLensProvider';
 import { findLoopAtCursor } from '../../src/iteration/iterationCommands';
+
+const WS = '/ws';
+const DOC_TEST_AL = path.resolve(WS, 'src/Test.al');
 
 suite('Iteration Integration', () => {
   const jsonWithIterations = JSON.stringify({
@@ -12,7 +16,7 @@ suite('Iteration Integration', () => {
     messages: ['small: 10', 'small: 20', 'big: 30'],
     capturedValues: [{ scopeName: 'Run', variableName: 'Result', value: '30', statementId: 1 }],
     iterations: [{
-      loopId: 'L0', loopLine: 3, loopEndLine: 10,
+      loopId: 'L0', sourceFile: 'src/Test.al', loopLine: 3, loopEndLine: 10,
       parentLoopId: null, parentIteration: null, iterationCount: 3,
       steps: [
         { iteration: 1, capturedValues: [{ variableName: 'i', value: '1' }, { variableName: 'Result', value: '10' }], messages: ['small: 10'], linesExecuted: [3, 4, 5, 7, 8, 10] },
@@ -29,7 +33,7 @@ suite('Iteration Integration', () => {
 
     // 2. Load store
     const store = new IterationStore();
-    store.load(parsed.iterations);
+    store.load(parsed.iterations, WS);
     assert.strictEqual(store.getLoops().length, 1);
 
     // 3. Step to iteration 2
@@ -50,7 +54,7 @@ suite('Iteration Integration', () => {
     assert.ok(!step3.linesExecuted.has(8));
 
     // 6. CodeLens shows correct iteration
-    const lenses = buildCodeLenses(store);
+    const lenses = buildCodeLenses(store, DOC_TEST_AL);
     assert.ok(lenses.length > 0);
     const titles = lenses.map((l: any) => l.command?.title || '');
     assert.ok(titles.some((t: string) => t.includes('3 of 3')));
@@ -58,7 +62,7 @@ suite('Iteration Integration', () => {
     // 7. Show All mode
     store.showAll('L0');
     assert.strictEqual(store.isShowingAll('L0'), true);
-    const allLenses = buildCodeLenses(store);
+    const allLenses = buildCodeLenses(store, DOC_TEST_AL);
     const allTitles = allLenses.map((l: any) => l.command?.title || '');
     assert.ok(allTitles.some((t: string) => t.includes('All')));
 
@@ -76,10 +80,10 @@ suite('Iteration Integration', () => {
     assert.strictEqual(parsed.iterations.length, 0);
 
     const store = new IterationStore();
-    store.load(parsed.iterations);
+    store.load(parsed.iterations, WS);
     assert.strictEqual(store.getLoops().length, 0);
 
-    const lenses = buildCodeLenses(store);
+    const lenses = buildCodeLenses(store, DOC_TEST_AL);
     assert.strictEqual(lenses.length, 0);
   });
 });

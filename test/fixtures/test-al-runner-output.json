@@ -88,6 +88,7 @@
   "iterations": [
     {
       "loopId": "L0",
+      "sourceFile": "src/Test.al",
       "loopLine": 11,
       "loopEndLine": 11,
       "iterationCount": 10,

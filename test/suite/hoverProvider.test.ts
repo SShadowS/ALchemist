@@ -43,7 +43,7 @@ suite('HoverProvider', () => {
 suite('HoverProvider — iteration-aware', () => {
   function makeLoopData(): IterationData[] {
     return [{
-      loopId: 'L0', loopLine: 10, loopEndLine: 11,
+      loopId: 'L0', sourceFile: 'src/Test.al', loopLine: 10, loopEndLine: 11,
       parentLoopId: null, parentIteration: null, iterationCount: 5,
       steps: [
         { iteration: 1, capturedValues: [{ variableName: 'myText', value: '1' }], messages: [], linesExecuted: [10, 11] },
@@ -57,7 +57,7 @@ suite('HoverProvider — iteration-aware', () => {
 
   test('when stepping, store provides per-iteration value (not aggregate)', () => {
     const store = new IterationStore();
-    store.load(makeLoopData());
+    store.load(makeLoopData(), '/ws');
     store.setIteration('L0', 3);
 
     // Hover should use store's per-iteration value
@@ -68,7 +68,7 @@ suite('HoverProvider — iteration-aware', () => {
 
   test('when stepping, linesExecuted shows coverage for current iteration', () => {
     const store = new IterationStore();
-    store.load(makeLoopData());
+    store.load(makeLoopData(), '/ws');
     store.setIteration('L0', 2);
 
     const step = store.getStep('L0', store.getCurrentIteration('L0'));
@@ -79,7 +79,7 @@ suite('HoverProvider — iteration-aware', () => {
 
   test('when showing all, iteration store reports show-all mode', () => {
     const store = new IterationStore();
-    store.load(makeLoopData());
+    store.load(makeLoopData(), '/ws');
     store.showAll('L0');
 
     assert.ok(store.isShowingAll('L0'));
@@ -88,7 +88,7 @@ suite('HoverProvider — iteration-aware', () => {
 
   test('stepping through iterations gives correct sequence of values', () => {
     const store = new IterationStore();
-    store.load(makeLoopData());
+    store.load(makeLoopData(), '/ws');
 
     const expected = ['1', '12', '123', '1234', '12345'];
     for (let i = 1; i <= 5; i++) {
