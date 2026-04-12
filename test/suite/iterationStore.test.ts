@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import * as path from 'path';
 import { IterationStore } from '../../src/iteration/iterationStore';
 import { IterationData } from '../../src/iteration/types';
 
@@ -274,5 +275,22 @@ suite('IterationStore — events', () => {
     sub.dispose();
     store.setIteration('L0', 2);
     assert.strictEqual(events.length, 0);
+  });
+});
+
+suite('IterationStore — path resolution', () => {
+  test('load resolves sourceFile to absolute path', () => {
+    const store = new IterationStore();
+    store.load(makeSingleLoop(), '/workspace');
+    const loop = store.getLoop('L0');
+    assert.ok(loop.sourceFile.includes('Test.al'));
+    assert.ok(path.isAbsolute(loop.sourceFile));
+  });
+
+  test('getLoops returns resolved absolute sourceFile', () => {
+    const store = new IterationStore();
+    store.load(makeSingleLoop(), '/workspace');
+    const loops = store.getLoops();
+    assert.ok(path.isAbsolute(loops[0].sourceFile));
   });
 });

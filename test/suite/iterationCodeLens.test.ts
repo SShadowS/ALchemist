@@ -75,4 +75,48 @@ suite('IterationCodeLensProvider', () => {
     const allLens = titles.find((t: string) => t.includes('All'));
     assert.ok(allLens, `Expected a lens with "All", got: ${titles.join(', ')}`);
   });
+
+  test('filters lenses by document path — matching file', () => {
+    const store = new IterationStore();
+    store.load(makeSingleLoop(), WS);
+    const lenses = buildCodeLenses(store, DOC_TEST_AL);
+    assert.ok(lenses.length >= 3);
+  });
+
+  test('filters lenses by document path — non-matching file', () => {
+    const store = new IterationStore();
+    store.load(makeSingleLoop(), WS);
+    const lenses = buildCodeLenses(store, path.resolve(WS, 'src/Other.al'));
+    assert.strictEqual(lenses.length, 0);
+  });
+
+  test('multiple loops from different files — only matching rendered', () => {
+    const store = new IterationStore();
+    const data: IterationData[] = [
+      {
+        loopId: 'L0', sourceFile: 'src/FileA.al', loopLine: 3, loopEndLine: 10,
+        parentLoopId: null, parentIteration: null, iterationCount: 3,
+        steps: [
+          { iteration: 1, capturedValues: [], messages: [], linesExecuted: [3] },
+          { iteration: 2, capturedValues: [], messages: [], linesExecuted: [3] },
+          { iteration: 3, capturedValues: [], messages: [], linesExecuted: [3] },
+        ],
+      },
+      {
+        loopId: 'L1', sourceFile: 'src/FileB.al', loopLine: 5, loopEndLine: 8,
+        parentLoopId: null, parentIteration: null, iterationCount: 2,
+        steps: [
+          { iteration: 1, capturedValues: [], messages: [], linesExecuted: [5] },
+          { iteration: 2, capturedValues: [], messages: [], linesExecuted: [5] },
+        ],
+      },
+    ];
+    store.load(data, WS);
+    const lensesA = buildCodeLenses(store, path.resolve(WS, 'src/FileA.al'));
+    const lensesB = buildCodeLenses(store, path.resolve(WS, 'src/FileB.al'));
+    assert.ok(lensesA.length > 0, 'Expected lenses for FileA');
+    assert.ok(lensesB.length > 0, 'Expected lenses for FileB');
+    assert.strictEqual(lensesA[0].range.start.line, 2);
+    assert.strictEqual(lensesB[0].range.start.line, 4);
+  });
 });
