@@ -70,23 +70,38 @@ export class DecorationManager {
 
   constructor(private readonly extensionPath: string) {
     this.coveredDecorationType = vscode.window.createTextEditorDecorationType({
-      gutterIconPath: path.join(extensionPath, 'resources', 'gutter-green.svg'),
       gutterIconSize: 'contain',
+      dark: {
+        gutterIconPath: path.join(extensionPath, 'resources', 'gutter-green.svg'),
+      },
+      light: {
+        gutterIconPath: path.join(extensionPath, 'resources', 'light', 'gutter-green.svg'),
+      },
     });
 
     this.uncoveredDecorationType = vscode.window.createTextEditorDecorationType({
-      gutterIconPath: path.join(extensionPath, 'resources', 'gutter-gray.svg'),
       gutterIconSize: 'contain',
+      dark: {
+        gutterIconPath: path.join(extensionPath, 'resources', 'gutter-gray.svg'),
+      },
+      light: {
+        gutterIconPath: path.join(extensionPath, 'resources', 'light', 'gutter-gray.svg'),
+      },
     });
 
     this.errorLineDecorationType = vscode.window.createTextEditorDecorationType({
-      gutterIconPath: path.join(extensionPath, 'resources', 'gutter-red.svg'),
       gutterIconSize: 'contain',
+      dark: {
+        gutterIconPath: path.join(extensionPath, 'resources', 'gutter-red.svg'),
+      },
+      light: {
+        gutterIconPath: path.join(extensionPath, 'resources', 'light', 'gutter-red.svg'),
+      },
     });
 
     this.capturedValueDecorationType = vscode.window.createTextEditorDecorationType({
       after: {
-        color: '#9cdcfe',
+        color: new vscode.ThemeColor('debugTokenExpression.name'),
         margin: '0 0 0 16px',
         fontStyle: 'italic',
       },
@@ -98,7 +113,7 @@ export class DecorationManager {
 
     this.messageDecorationType = vscode.window.createTextEditorDecorationType({
       after: {
-        color: '#6a9955',
+        color: new vscode.ThemeColor('debugTokenExpression.string'),
         margin: '0 0 0 16px',
         fontStyle: 'normal',
       },
@@ -106,7 +121,7 @@ export class DecorationManager {
 
     this.errorMessageDecorationType = vscode.window.createTextEditorDecorationType({
       after: {
-        color: '#f14c4c',
+        color: new vscode.ThemeColor('errorForeground'),
         margin: '0 0 0 16px',
         fontStyle: 'normal',
       },
@@ -114,10 +129,10 @@ export class DecorationManager {
 
     this.changedValueFlashDecorationType = vscode.window.createTextEditorDecorationType({
       after: {
-        color: '#9cdcfe',
+        color: new vscode.ThemeColor('debugTokenExpression.name'),
         margin: '0 0 0 16px',
         fontStyle: 'italic',
-        backgroundColor: 'rgba(86, 156, 214, 0.15)',
+        backgroundColor: new vscode.ThemeColor('editor.findMatchHighlightBackground'),
       },
     });
   }
@@ -191,9 +206,15 @@ export class DecorationManager {
       fileMap.set(line.number, { hits: line.hits });
 
       if (line.hits > 0) {
-        covered.push({ range });
+        covered.push({
+          range,
+          hoverMessage: new vscode.MarkdownString(`**Covered** (${line.hits} hit${line.hits > 1 ? 's' : ''})`)
+        });
       } else {
-        uncovered.push({ range });
+        uncovered.push({
+          range,
+          hoverMessage: new vscode.MarkdownString('**Not covered**')
+        });
       }
     }
 

@@ -114,7 +114,7 @@ export class IterationStepperDecoration {
   constructor(private readonly store: IterationStore) {
     this.decorationType = vscode.window.createTextEditorDecorationType({
       after: {
-        color: '#569cd6',
+        color: new vscode.ThemeColor('editorCodeLens.foreground'),
         margin: '0 0 0 16px',
         fontStyle: 'normal',
       },
