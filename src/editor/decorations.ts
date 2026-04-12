@@ -101,7 +101,7 @@ export class DecorationManager {
 
     this.capturedValueDecorationType = vscode.window.createTextEditorDecorationType({
       after: {
-        color: new vscode.ThemeColor('debugTokenExpression.name'),
+        color: new vscode.ThemeColor('alchemist.capturedValueForeground'),
         margin: '0 0 0 16px',
         fontStyle: 'italic',
       },
@@ -113,7 +113,7 @@ export class DecorationManager {
 
     this.messageDecorationType = vscode.window.createTextEditorDecorationType({
       after: {
-        color: new vscode.ThemeColor('debugTokenExpression.string'),
+        color: new vscode.ThemeColor('alchemist.messageForeground'),
         margin: '0 0 0 16px',
         fontStyle: 'normal',
       },
@@ -121,7 +121,7 @@ export class DecorationManager {
 
     this.errorMessageDecorationType = vscode.window.createTextEditorDecorationType({
       after: {
-        color: new vscode.ThemeColor('errorForeground'),
+        color: new vscode.ThemeColor('alchemist.errorForeground'),
         margin: '0 0 0 16px',
         fontStyle: 'normal',
       },
@@ -129,10 +129,10 @@ export class DecorationManager {
 
     this.changedValueFlashDecorationType = vscode.window.createTextEditorDecorationType({
       after: {
-        color: new vscode.ThemeColor('debugTokenExpression.name'),
+        color: new vscode.ThemeColor('alchemist.capturedValueForeground'),
         margin: '0 0 0 16px',
         fontStyle: 'italic',
-        backgroundColor: new vscode.ThemeColor('editor.findMatchHighlightBackground'),
+        backgroundColor: new vscode.ThemeColor('alchemist.changedValueBackground'),
       },
     });
   }

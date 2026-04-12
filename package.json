@@ -39,6 +39,48 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "colors": [
+      {
+        "id": "alchemist.capturedValueForeground",
+        "description": "Color for captured variable values shown inline after assignments.",
+        "defaults": {
+          "dark": "#9cdcfe",
+          "light": "#0451a5",
+          "highContrast": "#9cdcfe",
+          "highContrastLight": "#0451a5"
+        }
+      },
+      {
+        "id": "alchemist.messageForeground",
+        "description": "Color for Message() output shown inline.",
+        "defaults": {
+          "dark": "#6a9955",
+          "light": "#008000",
+          "highContrast": "#6a9955",
+          "highContrastLight": "#008000"
+        }
+      },
+      {
+        "id": "alchemist.errorForeground",
+        "description": "Color for error messages shown inline.",
+        "defaults": {
+          "dark": "#f14c4c",
+          "light": "#cd3131",
+          "highContrast": "#f14c4c",
+          "highContrastLight": "#cd3131"
+        }
+      },
+      {
+        "id": "alchemist.changedValueBackground",
+        "description": "Background highlight for values that changed between iterations.",
+        "defaults": {
+          "dark": "rgba(86, 156, 214, 0.15)",
+          "light": "rgba(0, 122, 204, 0.1)",
+          "highContrast": "rgba(86, 156, 214, 0.25)",
+          "highContrastLight": "rgba(0, 122, 204, 0.15)"
+        }
+      }
+    ],
     "commands": [
       {
         "command": "alchemist.newScratchFile",
