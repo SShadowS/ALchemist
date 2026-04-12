@@ -1,7 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { IterationStore } from './iterationStore';
-import { isScratchFile } from '../scratch/scratchManager';
 
 function pathsEqual(a: string, b: string): boolean {
   return path.normalize(a).toLowerCase() === path.normalize(b).toLowerCase();
@@ -110,12 +109,15 @@ export class IterationCodeLensProvider implements vscode.CodeLensProvider {
 }
 
 /**
- * Decoration-based iteration stepper — fallback for scratch files
- * outside workspace folders where CodeLens doesn't render.
+ * Decoration-based iteration stepper — renders inline after the loop line.
+ * Works on all files (project and scratch) since CodeLens only renders
+ * on files with TestItems registered in VS Code's test controller.
  */
 export class IterationStepperDecoration {
   private readonly decorationType: vscode.TextEditorDecorationType;
   private readonly storeSubscription: { dispose(): void };
+  private readonly editorSubscription: vscode.Disposable;
+  private readonly documentSubscription: vscode.Disposable;
 
   constructor(private readonly store: IterationStore) {
     this.decorationType = vscode.window.createTextEditorDecorationType({
@@ -127,16 +129,13 @@ export class IterationStepperDecoration {
     });
 
     this.storeSubscription = store.onDidChange(() => this.refresh());
+    this.editorSubscription = vscode.window.onDidChangeActiveTextEditor(() => this.refresh());
+    this.documentSubscription = vscode.workspace.onDidChangeTextDocument(() => this.refresh());
   }
 
   refresh(): void {
     const editor = vscode.window.activeTextEditor;
     if (!editor) return;
-    // Only show decoration stepper on scratch files — project files use CodeLens
-    if (!isScratchFile(editor.document.uri.fsPath)) {
-      this.clear(editor);
-      return;
-    }
     this.applyTo(editor);
   }
 
@@ -171,6 +170,8 @@ export class IterationStepperDecoration {
 
   dispose(): void {
     this.storeSubscription.dispose();
+    this.editorSubscription.dispose();
+    this.documentSubscription.dispose();
     this.decorationType.dispose();
   }
 }
