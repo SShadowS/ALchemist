@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { IterationData, IterationStep, LoopInfo, LoopChangeEvent } from './types';
 
 type ChangeListener = (event: LoopChangeEvent) => void;
@@ -6,7 +7,7 @@ export class IterationStore {
   private loops = new Map<string, { info: LoopInfo; steps: IterationStep[] }>();
   private listeners: ChangeListener[] = [];
 
-  load(iterations: IterationData[]): void {
+  load(iterations: IterationData[], workspacePath: string): void {
     this.loops.clear();
     for (const iter of iterations) {
       const steps: IterationStep[] = iter.steps.map((s) => ({
@@ -18,6 +19,7 @@ export class IterationStore {
 
       const info: LoopInfo = {
         loopId: iter.loopId,
+        sourceFile: path.resolve(workspacePath, iter.sourceFile),
         loopLine: iter.loopLine,
         loopEndLine: iter.loopEndLine,
         parentLoopId: iter.parentLoopId,

@@ -88,7 +88,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       // Load iteration data — only update on successful runs, don't let
       // failed runs (e.g. test controller auto-run with missing deps) clear good data
       if (result.iterations && result.iterations.length > 0) {
-        iterationStore.load(result.iterations);
+        iterationStore.load(result.iterations, workspaceFolder?.uri.fsPath ?? '');
         vscode.commands.executeCommand('setContext', 'alchemist.hasIterationData', true);
       } else if (result.exitCode === 0) {
         iterationStore.clear();

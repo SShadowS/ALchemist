@@ -1,6 +1,11 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { IterationStore } from './iterationStore';
 import { isScratchFile } from '../scratch/scratchManager';
+
+function pathsEqual(a: string, b: string): boolean {
+  return path.normalize(a).toLowerCase() === path.normalize(b).toLowerCase();
+}
 
 /**
  * Builds stepper display text for a loop.
@@ -18,12 +23,13 @@ export function buildStepperText(store: IterationStore, loopId: string): string 
  * Builds CodeLens items from the current IterationStore state.
  * Exported separately for unit testing.
  */
-export function buildCodeLenses(store: IterationStore): vscode.CodeLens[] {
+export function buildCodeLenses(store: IterationStore, documentPath: string): vscode.CodeLens[] {
   const loops = store.getLoops();
   const lenses: vscode.CodeLens[] = [];
 
   for (const loop of loops) {
     if (loop.iterationCount < 2) continue;
+    if (!pathsEqual(loop.sourceFile, documentPath)) continue;
 
     const line = loop.loopLine - 1; // Convert 1-based to 0-based
     const range = new vscode.Range(line, 0, line, 0);
@@ -93,8 +99,8 @@ export class IterationCodeLensProvider implements vscode.CodeLensProvider {
     this.storeSubscription = store.onDidChange(() => this.onDidChangeEmitter.fire());
   }
 
-  provideCodeLenses(): vscode.CodeLens[] {
-    return buildCodeLenses(this.store);
+  provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
+    return buildCodeLenses(this.store, document.uri.fsPath);
   }
 
   dispose(): void {
@@ -137,9 +143,11 @@ export class IterationStepperDecoration {
   applyTo(editor: vscode.TextEditor): void {
     const loops = this.store.getLoops();
     const decorations: vscode.DecorationOptions[] = [];
+    const editorPath = editor.document.uri.fsPath;
 
     for (const loop of loops) {
       if (loop.iterationCount < 2) continue;
+      if (!pathsEqual(loop.sourceFile, editorPath)) continue;
 
       const line = loop.loopLine - 1;
       if (line < 0 || line >= editor.document.lineCount) continue;
