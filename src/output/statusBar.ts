@@ -74,7 +74,7 @@ export class StatusBarManager {
   private nextItem?: vscode.StatusBarItem;
   private tableItem?: vscode.StatusBarItem;
 
-  showIterationStepper(loopId: string, current: number, total: number): void {
+  showIterationStepper(current: number, total: number): void {
     if (!this.prevItem) {
       this.prevItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 104);
       this.prevItem.command = 'alchemist.iterationPrev';

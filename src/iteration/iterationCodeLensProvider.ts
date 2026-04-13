@@ -180,6 +180,7 @@ export class IterationStepperDecoration {
   }
 
   dispose(): void {
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
     this.storeSubscription.dispose();
     this.editorSubscription.dispose();
     this.documentSubscription.dispose();

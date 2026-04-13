@@ -92,7 +92,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.commands.executeCommand('setContext', 'alchemist.hasIterationData', true);
         const loops = iterationStore.getLoops().filter(l => l.iterationCount >= 2);
         if (loops.length > 0) {
-          statusBar.showIterationStepper(loops[0].loopId, 0, loops[0].iterationCount);
+          statusBar.showIterationStepper(0, loops[0].iterationCount);
         }
       } else if (result.exitCode === 0) {
         iterationStore.clear();
@@ -225,7 +225,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           decorationManager.applyResults(editor, lastExecutionResult, wsPath);
         }
         const allLoop = iterationStore.getLoop(loopId);
-        statusBar.showIterationStepper(loopId, 0, allLoop.iterationCount);
+        statusBar.showIterationStepper(0, allLoop.iterationCount);
         return;
       }
 
@@ -239,7 +239,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         start: loop.loopLine,
         end: loop.loopEndLine,
       });
-      statusBar.showIterationStepper(loopId, loop.currentIteration, loop.iterationCount);
+      statusBar.showIterationStepper(loop.currentIteration, loop.iterationCount);
     } catch (err: any) {
       console.error('ALchemist: iteration change error:', err);
     }
