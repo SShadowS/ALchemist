@@ -14,7 +14,7 @@ suite('Iteration Integration', () => {
     tests: [{ name: 'TestLoop', status: 'pass', durationMs: 10 }],
     passed: 1, failed: 0, errors: 0, total: 1, exitCode: 0,
     messages: ['small: 10', 'small: 20', 'big: 30'],
-    capturedValues: [{ scopeName: 'Run', variableName: 'Result', value: '30', statementId: 1 }],
+    capturedValues: [{ scopeName: 'Run', sourceFile: 'src/Test.al', variableName: 'Result', value: '30', statementId: 1 }],
     iterations: [{
       loopId: 'L0', sourceFile: 'src/Test.al', loopLine: 3, loopEndLine: 10,
       parentLoopId: null, parentIteration: null, iterationCount: 3,
