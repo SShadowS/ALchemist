@@ -2,6 +2,10 @@ import * as vscode from 'vscode';
 import { DecorationManager } from './decorations';
 import { IterationStore } from '../iteration/iterationStore';
 
+function cmdUri(command: string, loopId: string): string {
+  return `command:${command}?${encodeURIComponent(JSON.stringify([loopId]))}`;
+}
+
 export class CoverageHoverProvider implements vscode.HoverProvider {
   constructor(
     private readonly decorationManager: DecorationManager,
@@ -38,6 +42,10 @@ export class CoverageHoverProvider implements vscode.HoverProvider {
       return this.buildIterationHover(hoveredWord, lineNumber, steppingLoop);
     }
 
+    // Show-all mode: if hovering on a loop line, show nav-only hover
+    const loopLineHover = this.buildLoopLineHover(lineNumber);
+    if (loopLineHover) return loopLineHover;
+
     return this.buildAggregateHover(filePath, hoveredWord, lineNumber);
   }
 
@@ -65,6 +73,18 @@ export class CoverageHoverProvider implements vscode.HoverProvider {
     return undefined;
   }
 
+  private buildIterationNavMarkdown(loopId: string, loop: { currentIteration: number; iterationCount: number }): string {
+    if (this.iterationStore!.isShowingAll(loopId)) {
+      return `[$(chevron-left) Step in](${cmdUri('alchemist.iterationPrev', loopId)}) | ` +
+        `[Step in $(chevron-right)](${cmdUri('alchemist.iterationNext', loopId)}) | ` +
+        `[Table](${cmdUri('alchemist.iterationTable', loopId)})`;
+    }
+    return `[$(chevron-left) Prev](${cmdUri('alchemist.iterationPrev', loopId)}) | ` +
+      `[Next $(chevron-right)](${cmdUri('alchemist.iterationNext', loopId)}) | ` +
+      `[Show All](${cmdUri('alchemist.iterationShowAll', loopId)}) | ` +
+      `[Table](${cmdUri('alchemist.iterationTable', loopId)})`;
+  }
+
   /**
    * Hover in per-iteration mode — shows values and coverage for the current iteration.
    */
@@ -83,24 +103,66 @@ export class CoverageHoverProvider implements vscode.HoverProvider {
 
     if (!hasMatchingVar && !lineExecuted) return undefined;
 
+    const detail = vscode.workspace.getConfiguration('alchemist').get<string>('iterationHoverDetail', 'rich');
     const markdown = new vscode.MarkdownString();
     markdown.isTrusted = true;
 
-    // Show per-iteration variable value
+    // Header
+    markdown.appendMarkdown(`**Iteration ${stepping.iteration} of ${loop.iterationCount}**\n\n`);
+
+    // Navigation links
+    markdown.appendMarkdown(this.buildIterationNavMarkdown(stepping.loopId, loop));
+    markdown.appendMarkdown('\n\n');
+
+    // Per-iteration variable value (for hovered word)
     if (hasMatchingVar) {
       const value = step.capturedValues.get(matchingKey!)!;
-      markdown.appendMarkdown(`**ALchemist: ${matchingKey}** (iteration ${stepping.iteration} of ${loop.iterationCount})\n\n`);
       markdown.appendCodeblock(`${matchingKey} = ${value}`, 'al');
-      markdown.appendMarkdown('\n');
     }
 
-    // Show per-iteration coverage
-    if (lineExecuted) {
-      markdown.appendMarkdown(`**Statement Coverage** (iteration ${stepping.iteration})\n\n`);
-      markdown.appendMarkdown(`Status: Covered\n`);
+    // Values table (values + rich modes)
+    if (detail !== 'minimal' && step.capturedValues.size > 0) {
+      const changedVars = this.iterationStore!.getChangedValues(stepping.loopId, stepping.iteration);
+      const prevStep = stepping.iteration > 1 ? this.iterationStore!.getStep(stepping.loopId, stepping.iteration - 1) : null;
+
+      markdown.appendMarkdown('\n| Variable | Value |\n|----------|-------|\n');
+      for (const [name, value] of step.capturedValues) {
+        const changed = changedVars.includes(name);
+        const prevValue = prevStep?.capturedValues.get(name);
+        const changeNote = changed && prevValue !== undefined ? ` *(was ${prevValue})*` : '';
+        markdown.appendMarkdown(`| ${name} | \`${value}\`${changeNote} |\n`);
+      }
     }
 
-    return markdown.value.length > 0 ? new vscode.Hover(markdown) : undefined;
+    // Messages (rich mode only)
+    if (detail === 'rich' && step.messages.length > 0) {
+      markdown.appendMarkdown(`\nMessages: ${step.messages.map(m => `\`${m}\``).join(', ')}\n`);
+    }
+
+    return new vscode.Hover(markdown);
+  }
+
+  /**
+   * Show navigation hover when hovering on a loop line in show-all mode.
+   */
+  private buildLoopLineHover(lineNumber: number): vscode.Hover | undefined {
+    if (!this.iterationStore) return undefined;
+    const loops = this.iterationStore.getLoops();
+    const loop = loops.find(l => l.loopLine === lineNumber && l.iterationCount >= 2);
+    if (!loop) return undefined;
+
+    const markdown = new vscode.MarkdownString();
+    markdown.isTrusted = true;
+
+    if (this.iterationStore.isShowingAll(loop.loopId)) {
+      markdown.appendMarkdown(`**All iterations** (${loop.iterationCount} total)\n\n`);
+    } else {
+      markdown.appendMarkdown(`**Iteration ${loop.currentIteration} of ${loop.iterationCount}**\n\n`);
+    }
+    markdown.appendMarkdown(this.buildIterationNavMarkdown(loop.loopId, loop));
+    markdown.appendMarkdown('\n');
+
+    return new vscode.Hover(markdown);
   }
 
   /**

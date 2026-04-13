@@ -255,6 +255,12 @@
           "type": "number",
           "default": 600,
           "description": "Duration in ms for the value change flash when stepping (0 to disable)."
+        },
+        "alchemist.iterationHoverDetail": {
+          "type": "string",
+          "enum": ["minimal", "values", "rich"],
+          "default": "rich",
+          "description": "Detail level for iteration hover: minimal (nav only), values (nav + variables), rich (nav + variables + messages)."
         }
       }
     }
