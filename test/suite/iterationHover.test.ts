@@ -58,3 +58,8 @@ suite('Iteration Hover — data for command URIs', () => {
     assert.strictEqual(loop.iterationCount, 3);
   });
 });
+
+// Note: Status bar stepper (StatusBarManager.showIterationStepper/hideIterationStepper)
+// is not unit-tested because it requires VS Code StatusBarItem API mocks.
+// Verified via manual F5 smoke testing. The commands it triggers (iterationPrev/Next/etc.)
+// ARE tested through the IterationStore and IterationCommands test suites.
