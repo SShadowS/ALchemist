@@ -13,9 +13,9 @@ function pathsEqual(a: string, b: string): boolean {
 export function buildStepperText(store: IterationStore, loopId: string): string {
   const loop = store.getLoop(loopId);
   if (store.isShowingAll(loopId)) {
-    return '\u25C0  All  \u25B6  |  Show All  |  Table';
+    return '\u27F3 All';
   }
-  return `\u25C0  ${loop.currentIteration} of ${loop.iterationCount}  \u25B6  |  Show All  |  Table`;
+  return `\u27F3 ${loop.currentIteration}/${loop.iterationCount}`;
 }
 
 /**
