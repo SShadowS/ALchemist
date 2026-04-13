@@ -67,19 +67,55 @@ export class StatusBarManager {
     this.item.tooltip = `ALchemist \u2014 Scratch (${result.durationMs}ms)`;
   }
 
-  setIterationIndicator(loopId: string, current: number, total: number): void {
-    // Append iteration indicator to existing text
-    const baseText = this.item.text;
-    // Remove any existing iteration indicator
-    const cleaned = baseText.replace(/\s*\u27F3\d+\/\d+$/, '');
-    this.item.text = `${cleaned} \u27F3${current}/${total}`;
+  // --- Iteration stepper ---
+
+  private prevItem?: vscode.StatusBarItem;
+  private counterItem?: vscode.StatusBarItem;
+  private nextItem?: vscode.StatusBarItem;
+  private tableItem?: vscode.StatusBarItem;
+
+  showIterationStepper(loopId: string, current: number, total: number): void {
+    if (!this.prevItem) {
+      this.prevItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 104);
+      this.prevItem.command = 'alchemist.iterationPrev';
+      this.prevItem.tooltip = 'Previous iteration (Ctrl+Shift+A Left)';
+
+      this.counterItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 103);
+      this.counterItem.command = 'alchemist.iterationShowAll';
+      this.counterItem.tooltip = 'Show all iterations (Ctrl+Shift+A A)';
+
+      this.nextItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 102);
+      this.nextItem.command = 'alchemist.iterationNext';
+      this.nextItem.tooltip = 'Next iteration (Ctrl+Shift+A Right)';
+
+      this.tableItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 101);
+      this.tableItem.command = 'alchemist.iterationTable';
+      this.tableItem.tooltip = 'Open iteration table (Ctrl+Shift+A T)';
+    }
+
+    this.prevItem.text = '$(chevron-left)';
+    this.counterItem!.text = current === 0 ? 'All' : `${current}/${total}`;
+    this.nextItem!.text = '$(chevron-right)';
+    this.tableItem!.text = 'Table';
+
+    this.prevItem.show();
+    this.counterItem!.show();
+    this.nextItem!.show();
+    this.tableItem!.show();
   }
 
-  clearIterationIndicator(): void {
-    this.item.text = this.item.text.replace(/\s*\u27F3\d+\/\d+$/, '');
+  hideIterationStepper(): void {
+    this.prevItem?.hide();
+    this.counterItem?.hide();
+    this.nextItem?.hide();
+    this.tableItem?.hide();
   }
 
   dispose(): void {
     this.item.dispose();
+    this.prevItem?.dispose();
+    this.counterItem?.dispose();
+    this.nextItem?.dispose();
+    this.tableItem?.dispose();
   }
 }

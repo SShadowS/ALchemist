@@ -90,9 +90,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (result.iterations && result.iterations.length > 0) {
         iterationStore.load(result.iterations, workspaceFolder?.uri.fsPath ?? '');
         vscode.commands.executeCommand('setContext', 'alchemist.hasIterationData', true);
+        const loops = iterationStore.getLoops().filter(l => l.iterationCount >= 2);
+        if (loops.length > 0) {
+          statusBar.showIterationStepper(loops[0].loopId, 0, loops[0].iterationCount);
+        }
       } else if (result.exitCode === 0) {
         iterationStore.clear();
         vscode.commands.executeCommand('setContext', 'alchemist.hasIterationData', false);
+        statusBar.hideIterationStepper();
       }
     })
   );
@@ -199,7 +204,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       decorationManager.clearAll();
       iterationStore.clear();
       vscode.commands.executeCommand('setContext', 'alchemist.hasIterationData', false);
-      statusBar.clearIterationIndicator();
+      statusBar.hideIterationStepper();
       statusBar.setIdle();
     }),
     vscode.commands.registerCommand('alchemist.showOutput', () => {
@@ -215,12 +220,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!editor) return;
 
       if (iterationStore.isShowingAll(loopId)) {
-        // Re-apply aggregate decorations from the last execution result
         if (lastExecutionResult) {
           const wsPath = workspaceFolder?.uri.fsPath || path.dirname(editor.document.uri.fsPath);
           decorationManager.applyResults(editor, lastExecutionResult, wsPath);
         }
-        statusBar.clearIterationIndicator();
+        const allLoop = iterationStore.getLoop(loopId);
+        statusBar.showIterationStepper(loopId, 0, allLoop.iterationCount);
         return;
       }
 
@@ -234,7 +239,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         start: loop.loopLine,
         end: loop.loopEndLine,
       });
-      statusBar.setIterationIndicator(loopId, loop.currentIteration, loop.iterationCount);
+      statusBar.showIterationStepper(loopId, loop.currentIteration, loop.iterationCount);
     } catch (err: any) {
       console.error('ALchemist: iteration change error:', err);
     }
