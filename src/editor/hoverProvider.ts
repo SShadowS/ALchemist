@@ -75,12 +75,12 @@ export class CoverageHoverProvider implements vscode.HoverProvider {
 
   private buildIterationNavMarkdown(loopId: string, loop: { currentIteration: number; iterationCount: number }): string {
     if (this.iterationStore!.isShowingAll(loopId)) {
-      return `[$(chevron-left) Step in](${cmdUri('alchemist.iterationPrev', loopId)}) | ` +
-        `[Step in $(chevron-right)](${cmdUri('alchemist.iterationNext', loopId)}) | ` +
+      return `[\u25C0 Step in](${cmdUri('alchemist.iterationPrev', loopId)}) | ` +
+        `[Step in \u25B6](${cmdUri('alchemist.iterationNext', loopId)}) | ` +
         `[Table](${cmdUri('alchemist.iterationTable', loopId)})`;
     }
-    return `[$(chevron-left) Prev](${cmdUri('alchemist.iterationPrev', loopId)}) | ` +
-      `[Next $(chevron-right)](${cmdUri('alchemist.iterationNext', loopId)}) | ` +
+    return `[\u25C0 Prev](${cmdUri('alchemist.iterationPrev', loopId)}) | ` +
+      `[Next \u25B6](${cmdUri('alchemist.iterationNext', loopId)}) | ` +
       `[Show All](${cmdUri('alchemist.iterationShowAll', loopId)}) | ` +
       `[Table](${cmdUri('alchemist.iterationTable', loopId)})`;
   }
