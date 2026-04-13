@@ -296,6 +296,63 @@ suite('parseJsonOutput edge cases', () => {
   });
 });
 
+suite('parseJsonOutput — capturedValues sourceFile', () => {
+  test('parses sourceFile from captured values', () => {
+    const json = JSON.stringify({
+      tests: [{ name: 'Test', status: 'pass', durationMs: 1 }],
+      passed: 1, failed: 0, errors: 0, total: 1, exitCode: 0,
+      capturedValues: [{ scopeName: 'Scope', sourceFile: 'src/CU1.al', variableName: 'x', value: '10', statementId: 0 }],
+    });
+    const result = parseJsonOutput(json);
+    assert.strictEqual(result.capturedValues[0].sourceFile, 'src/CU1.al');
+  });
+
+  test('handles missing sourceFile gracefully', () => {
+    const json = JSON.stringify({
+      tests: [], passed: 0, failed: 0, errors: 0, total: 0, exitCode: 0,
+      capturedValues: [{ scopeName: 'Scope', variableName: 'x', value: '10', statementId: 0 }],
+    });
+    const result = parseJsonOutput(json);
+    assert.strictEqual(result.capturedValues[0].sourceFile, '');
+  });
+
+  test('multi-file: values from different files have distinct sourceFile', () => {
+    const json = JSON.stringify({
+      tests: [{ name: 'Test', status: 'pass', durationMs: 1 }],
+      passed: 1, failed: 0, errors: 0, total: 1, exitCode: 0,
+      capturedValues: [
+        { scopeName: 'TestProc_Scope_111', sourceFile: 'TextCU.al', variableName: 'CU', value: 'Codeunit', statementId: 0 },
+        { scopeName: 'MyProcedure_Scope_222', sourceFile: 'CU1.al', variableName: 'myInt', value: '1', statementId: 0 },
+        { scopeName: 'MyProcedure_Scope_222', sourceFile: 'CU1.al', variableName: 'i', value: '1', statementId: 1 },
+        { scopeName: 'MyProcedure_Scope_222', sourceFile: 'CU1.al', variableName: 'myInt', value: '56', statementId: 5 },
+      ],
+    });
+    const result = parseJsonOutput(json);
+    // TextCU.al values
+    const textCUValues = result.capturedValues.filter(cv => cv.sourceFile === 'TextCU.al');
+    assert.strictEqual(textCUValues.length, 1);
+    assert.strictEqual(textCUValues[0].variableName, 'CU');
+    // CU1.al values
+    const cu1Values = result.capturedValues.filter(cv => cv.sourceFile === 'CU1.al');
+    assert.strictEqual(cu1Values.length, 3);
+    assert.ok(cu1Values.some(cv => cv.variableName === 'myInt' && cv.value === '56'));
+    // No cross-contamination
+    assert.ok(!textCUValues.some(cv => cv.variableName === 'myInt'));
+    assert.ok(!cu1Values.some(cv => cv.variableName === 'CU'));
+  });
+
+  test('empty sourceFile values are excluded by filter logic', () => {
+    // Simulates the filtering done in decorations.ts applyInlineCapturedValues
+    const values = [
+      { scopeName: 'A', sourceFile: 'CU1.al', variableName: 'x', value: '1', statementId: 0 },
+      { scopeName: 'B', sourceFile: '', variableName: 'y', value: '2', statementId: 0 },
+    ];
+    const filtered = values.filter(cv => !!cv.sourceFile);
+    assert.strictEqual(filtered.length, 1);
+    assert.strictEqual(filtered[0].variableName, 'x');
+  });
+});
+
 suite('parseJsonOutput — iterations', () => {
   test('parses iterations array from JSON', () => {
     const json = JSON.stringify({

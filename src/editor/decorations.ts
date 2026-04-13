@@ -333,7 +333,7 @@ export class DecorationManager {
     // Filter captured values to only those belonging to this file
     const filePath = editor.document.uri.fsPath;
     const fileValues = capturedValues.filter(cv => {
-      if (!cv.sourceFile) return true; // no sourceFile = old runner, show all
+      if (!cv.sourceFile) return false;
       const resolved = path.resolve(workspacePath, cv.sourceFile);
       return path.normalize(resolved).toLowerCase() === path.normalize(filePath).toLowerCase();
     });
