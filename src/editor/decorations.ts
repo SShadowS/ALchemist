@@ -330,15 +330,21 @@ export class DecorationManager {
   private applyInlineCapturedValues(editor: vscode.TextEditor, capturedValues: CapturedValue[], coverage: CoverageEntry[], workspacePath: string): void {
     if (capturedValues.length === 0) return;
 
+    // Filter captured values to only those belonging to this file
+    const filePath = editor.document.uri.fsPath;
+    const fileValues = capturedValues.filter(cv => {
+      if (!cv.sourceFile) return true; // no sourceFile = old runner, show all
+      const resolved = path.resolve(workspacePath, cv.sourceFile);
+      return path.normalize(resolved).toLowerCase() === path.normalize(filePath).toLowerCase();
+    });
+    if (fileValues.length === 0) return;
+
     // Group captured values by statementId, keeping only the last value per variable per statement
     const lastValues = new Map<string, CapturedValue>();
-    for (const cv of capturedValues) {
+    for (const cv of fileValues) {
       const key = `${cv.statementId}:${cv.variableName}`;
       lastValues.set(key, cv);
     }
-
-    // Find coverage entry for this file to map statementIds to line numbers
-    const filePath = editor.document.uri.fsPath;
     const entry = this.findCoverageForFile(coverage, filePath, workspacePath);
     if (!entry || entry.lines.length === 0) return;
 

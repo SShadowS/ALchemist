@@ -13,6 +13,7 @@ export interface TestResult {
 
 export interface CapturedValue {
   scopeName: string;
+  sourceFile: string;
   variableName: string;
   value: string;
   statementId: number;
@@ -183,6 +184,7 @@ export function parseJsonOutput(json: string): {
 
   const capturedValues: CapturedValue[] = (data.capturedValues || []).map((v: any) => ({
     scopeName: v.scopeName,
+    sourceFile: v.sourceFile ?? '',
     variableName: v.variableName,
     value: v.value ?? '',
     statementId: v.statementId,
