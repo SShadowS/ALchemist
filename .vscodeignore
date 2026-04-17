@@ -1,4 +1,5 @@
 .vscode/**
+.claude/**
 src/**
 test/**
 out/**
@@ -11,3 +12,5 @@ webpack.config.js
 tsconfig.json
 tsconfig.build.json
 **/*.map
+CLAUDE.md
+cobertura.xml
