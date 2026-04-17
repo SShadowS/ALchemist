@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.3.0 (2026-04-17)
+
+### Features
+
+- **Iteration navigation (time-travel)** — Step through loop iterations forward/backward to see how values evolved. Keybindings: `Ctrl+Shift+A →/←` (next/prev), `Home/End` (first/last), `A` (show all), `T` (table panel)
+- **CodeLens iteration stepper** — Clickable stepper above every loop shows current iteration and controls
+- **Clickable status bar stepper** — Status bar shows active iteration and navigates on click
+- **Interactive hover navigation** — Hover loop values to step through iterations via command links
+- **WebView iteration table** — Dedicated panel lists all iterations with variables; keyboard nav, sticky headers, accessibility
+- **Value change flash** — Values that changed between iterations briefly highlight
+- **Nested loop support** — Independent stepping per loop with cursor-aware commands
+- **Theme-aware decorations** — Inline colors adapt to light/dark/high-contrast themes via customizable VS Code theme colors (`alchemist.capturedValueForeground`, `alchemist.messageForeground`, `alchemist.errorForeground`, `alchemist.changedValueBackground`)
+- **Source file filtering** — Captured values and CodeLens scoped to the active document when multi-file projects run
+
+### Fixes
+
+- **Iteration-aware hover** — Hover shows values for the selected iteration, not aggregate
+- **Decoration stepper fallback** — Scratch files without CodeLens still get inline stepper
+- **Scoped loop decorations** — Inline values only render within the active loop's line range
+- **Debounced decoration refresh** — Reduces flicker when editing
+- **Default to show-all after run** — New runs reset iteration view instead of sticking on stale step
+- **Listener and timer cleanup** — Fixes leaks on dispose
+- **CSP hardening** — WebView content-security-policy tightened
+- **Hover cursor and unicode arrows** — Navigation affordances render correctly across themes
+
+### Other
+
+- New settings: `alchemist.showIterationStepper`, `alchemist.iterationFlashDuration`, `alchemist.iterationHoverDetail`
+- Integration tests for full iteration flow
+- Design specs and implementation plans for iteration navigation and sourceFile tracking
+
 ## 0.2.0 (2026-04-11)
 
 ### Features

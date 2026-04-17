@@ -31,6 +31,10 @@ Live execution and inline feedback for AL (Business Central) — like [Quokka.js
 | **Coverage hover tooltips** | Hover over gutter dots to see coverage status |
 | **Output panel** | Formatted ALchemist output with messages, errors, and coverage summary |
 | **Status bar** | Beaker icon shows idle/running/success/failure state at a glance |
+| **Iteration navigation** | Time-travel through loop iterations with CodeLens stepper, hover links, and keyboard shortcuts |
+| **Iteration table panel** | Dedicated WebView listing every iteration with its variable snapshot |
+| **Value change flash** | Inline values briefly highlight when they change between iterations |
+| **Theme-aware colors** | Inline decoration colors adapt to light/dark/high-contrast themes and are user-customizable |
 | **Auto-install** | AL.Runner is downloaded automatically on first use |
 
 ## Prerequisites
@@ -43,7 +47,7 @@ Live execution and inline feedback for AL (Business Central) — like [Quokka.js
 **From VSIX (beta):**
 
 ```
-code --install-extension alchemist-0.1.0.vsix
+code --install-extension alchemist-0.3.0.vsix
 ```
 
 Or in VS Code: `Ctrl+Shift+P` > "Extensions: Install from VSIX..."
@@ -116,6 +120,9 @@ For project-aware scratch files, add `//alchemist: project` as the first line to
 | `alchemist.showGutterCoverage` | `true` | Show coverage gutter indicators. |
 | `alchemist.showCapturedValues` | `true` | Show captured variable values inline. |
 | `alchemist.dimUncoveredLines` | `true` | Reduce opacity of lines not reached. |
+| `alchemist.showIterationStepper` | `true` | Show CodeLens iteration stepper above loops (requires reload). |
+| `alchemist.iterationFlashDuration` | `600` | Duration in ms for value-change flash when stepping (0 disables). |
+| `alchemist.iterationHoverDetail` | `"rich"` | Iteration hover detail: `minimal`, `values`, or `rich`. |
 
 ## Commands
 
@@ -129,6 +136,12 @@ For project-aware scratch files, add `//alchemist: project` as the first line to
 | ALchemist: Save Scratch As... | | Save scratch file to workspace |
 | ALchemist: Stop Run | | Cancel a running execution |
 | ALchemist: Show Output | | Focus the ALchemist output panel |
+| ALchemist: Next Iteration | `Ctrl+Shift+A →` | Step to next loop iteration |
+| ALchemist: Previous Iteration | `Ctrl+Shift+A ←` | Step to previous loop iteration |
+| ALchemist: First Iteration | `Ctrl+Shift+A Home` | Jump to first iteration |
+| ALchemist: Last Iteration | `Ctrl+Shift+A End` | Jump to last iteration |
+| ALchemist: Show All Iterations | `Ctrl+Shift+A A` | Show aggregate view of all iterations |
+| ALchemist: Open Iteration Table | `Ctrl+Shift+A T` | Open the iteration table panel |
 
 ## Key Files
 
