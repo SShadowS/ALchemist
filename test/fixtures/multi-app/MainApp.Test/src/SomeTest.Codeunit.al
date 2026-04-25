@@ -14,7 +14,8 @@ codeunit 50100 SomeTestCodeunit
         if Sut.Compute(3) <> 6 then Error('expected 6');
     end;
 
-    [Test, HandlerFunctions('MessageHandler')]
+    [Test]
+    [HandlerFunctions('MessageHandler')]
     procedure ComputeZero()
     var
         Sut: Codeunit SomeCodeunit;

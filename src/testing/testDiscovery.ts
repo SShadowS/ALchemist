@@ -79,32 +79,50 @@ export function discoverTestsFromContent(content: string, fileName: string): Dis
   return codeunits;
 }
 
-export async function discoverTestsInWorkspace(workspacePath: string): Promise<DiscoveredTestCodeunit[]> {
+export function discoverTestsInWorkspaceSync(workspacePath: string): DiscoveredTestCodeunit[] {
   const allCodeunits: DiscoveredTestCodeunit[] = [];
-
-  const alFiles = await findAlFiles(workspacePath);
+  const alFiles = findAlFilesSync(workspacePath);
   for (const filePath of alFiles) {
     const content = fs.readFileSync(filePath, 'utf-8');
     const relativePath = path.relative(workspacePath, filePath);
     const discovered = discoverTestsFromContent(content, relativePath);
     allCodeunits.push(...discovered);
   }
-
   return allCodeunits;
 }
 
-async function findAlFiles(dir: string): Promise<string[]> {
-  const results: string[] = [];
+// Keep async wrapper for backward compat with existing callers.
+export async function discoverTestsInWorkspace(workspacePath: string): Promise<DiscoveredTestCodeunit[]> {
+  return discoverTestsInWorkspaceSync(workspacePath);
+}
 
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
+function findAlFilesSync(dir: string): string[] {
+  const results: string[] = [];
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return results;
+  }
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== 'node_modules' && entry.name !== '.alpackages') {
-      results.push(...await findAlFiles(fullPath));
+    if (entry.isDirectory() && !SKIP_DIR_NAMES.has(entry.name)) {
+      results.push(...findAlFilesSync(fullPath));
     } else if (entry.isFile() && entry.name.endsWith('.al')) {
       results.push(fullPath);
     }
   }
-
   return results;
 }
+
+const SKIP_DIR_NAMES = new Set([
+  'node_modules',
+  '.alpackages',
+  '.alcache',
+  '.git',
+  '.AL-Go',
+  'bin',
+  'obj',
+  'out',
+  '.snapshots',
+]);
