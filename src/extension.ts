@@ -6,7 +6,7 @@ import { DecorationManager } from './editor/decorations';
 import { CoverageHoverProvider } from './editor/hoverProvider';
 import { AlchemistOutputChannel } from './output/outputChannel';
 import { StatusBarManager } from './output/statusBar';
-import { ScratchManager, isScratchFile, isProjectAware } from './scratch/scratchManager';
+import { ScratchManager, isScratchFile, isProjectAware, resolveScratchProjectApp } from './scratch/scratchManager';
 import { AlchemistTestController } from './testing/testController';
 import { IterationStore } from './iteration/iterationStore';
 import { IterationCodeLensProvider, IterationStepperDecoration } from './iteration/iterationCodeLensProvider';
@@ -140,9 +140,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (isScratchFile(filePath)) {
         // Scratch mode
         const content = doc.getText();
-        const wsPath = workspaceModel.getApps()[0]?.path;
-        if (isProjectAware(content) && wsPath) {
-          await executor.execute('scratch-project', filePath, wsPath);
+        if (isProjectAware(content)) {
+          const settingAppId = config.get<string>('scratchProjectAppId', '');
+          const persistedAppId = context.globalState.get<string>(`alchemist.scratchApp.${filePath}`);
+          const resolution = resolveScratchProjectApp(
+            workspaceModel.getApps(),
+            settingAppId || undefined,
+            persistedAppId,
+          );
+
+          if (resolution.mode === 'standalone') {
+            await executor.execute('scratch-standalone', filePath);
+          } else if (resolution.mode === 'app') {
+            await executor.execute('scratch-project', filePath, resolution.app.path);
+          } else {
+            // needsPrompt
+            const pick = await vscode.window.showQuickPick(
+              resolution.choices.map(c => ({ label: c.name, description: c.path, appId: c.id })),
+              { placeHolder: 'Select AL app context for this scratch file' },
+            );
+            if (!pick) return;
+            await context.globalState.update(`alchemist.scratchApp.${filePath}`, pick.appId);
+            const chosen = resolution.choices.find(c => c.id === pick.appId)!;
+            await executor.execute('scratch-project', filePath, chosen.path);
+          }
         } else {
           await executor.execute('scratch-standalone', filePath);
         }
@@ -208,9 +229,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       if (isScratchFile(filePath)) {
         const content = editor.document.getText();
-        const wsPath = workspaceModel.getApps()[0]?.path;
-        if (isProjectAware(content) && wsPath) {
-          await executor.execute('scratch-project', filePath, wsPath);
+        if (isProjectAware(content)) {
+          const runNowConfig = vscode.workspace.getConfiguration('alchemist');
+          const settingAppId = runNowConfig.get<string>('scratchProjectAppId', '');
+          const persistedAppId = context.globalState.get<string>(`alchemist.scratchApp.${filePath}`);
+          const resolution = resolveScratchProjectApp(
+            workspaceModel.getApps(),
+            settingAppId || undefined,
+            persistedAppId,
+          );
+
+          if (resolution.mode === 'standalone') {
+            await executor.execute('scratch-standalone', filePath);
+          } else if (resolution.mode === 'app') {
+            await executor.execute('scratch-project', filePath, resolution.app.path);
+          } else {
+            // needsPrompt
+            const pick = await vscode.window.showQuickPick(
+              resolution.choices.map(c => ({ label: c.name, description: c.path, appId: c.id })),
+              { placeHolder: 'Select AL app context for this scratch file' },
+            );
+            if (!pick) return;
+            await context.globalState.update(`alchemist.scratchApp.${filePath}`, pick.appId);
+            const chosen = resolution.choices.find(c => c.id === pick.appId)!;
+            await executor.execute('scratch-project', filePath, chosen.path);
+          }
         } else {
           await executor.execute('scratch-standalone', filePath);
         }

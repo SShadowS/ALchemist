@@ -261,6 +261,11 @@
           "enum": ["minimal", "values", "rich"],
           "default": "rich",
           "description": "Detail level for iteration hover: minimal (nav only), values (nav + variables), rich (nav + variables + messages)."
+        },
+        "alchemist.scratchProjectAppId": {
+          "type": "string",
+          "default": "",
+          "description": "GUID (app.json 'id') of the AL app to use as context for project-aware scratch files. Leave empty to be prompted."
         }
       }
     }
