@@ -128,3 +128,102 @@ suite('WorkspaceModel — scan + lookups', () => {
     }
   });
 });
+
+suite('WorkspaceModel — dep graph', () => {
+  const fsp = require('fs');
+  const os = require('os');
+  let tmp: string;
+  let model: WorkspaceModel;
+
+  function writeApp(folder: string, app: any) {
+    fsp.mkdirSync(path.join(tmp, folder), { recursive: true });
+    fsp.writeFileSync(path.join(tmp, folder, 'app.json'), JSON.stringify(app));
+  }
+
+  setup(() => {
+    tmp = fsp.mkdtempSync(path.join(os.tmpdir(), 'alchemist-dep-test-'));
+  });
+  teardown(() => {
+    fsp.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test('getDependents: A is base, B depends on A, C depends on B', async () => {
+    writeApp('A', { id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' });
+    writeApp('B', { id: 'b', name: 'B', publisher: 'p', version: '1.0.0.0',
+      dependencies: [{ id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' }] });
+    writeApp('C', { id: 'c', name: 'C', publisher: 'p', version: '1.0.0.0',
+      dependencies: [{ id: 'b', name: 'B', publisher: 'p', version: '1.0.0.0' }] });
+
+    model = new WorkspaceModel([tmp]);
+    await model.scan();
+
+    const depsOfA = model.getDependents('a').map(a => a.name).sort();
+    assert.deepStrictEqual(depsOfA, ['A', 'B', 'C'], 'A plus transitive dependents B and C');
+
+    const depsOfB = model.getDependents('b').map(a => a.name).sort();
+    assert.deepStrictEqual(depsOfB, ['B', 'C']);
+
+    const depsOfC = model.getDependents('c').map(a => a.name).sort();
+    assert.deepStrictEqual(depsOfC, ['C'], 'leaf has only itself');
+  });
+
+  test('getDependents returns empty array for unknown appId', async () => {
+    writeApp('A', { id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' });
+    model = new WorkspaceModel([tmp]);
+    await model.scan();
+    assert.deepStrictEqual(model.getDependents('nonexistent'), []);
+  });
+
+  test('cycle A <-> B handled without infinite recursion', async () => {
+    writeApp('A', { id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0',
+      dependencies: [{ id: 'b', name: 'B', publisher: 'p', version: '1.0.0.0' }] });
+    writeApp('B', { id: 'b', name: 'B', publisher: 'p', version: '1.0.0.0',
+      dependencies: [{ id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' }] });
+
+    const warnings: string[] = [];
+    model = new WorkspaceModel([tmp], m => warnings.push(m));
+    await model.scan();
+
+    const depsOfA = model.getDependents('a').map(a => a.name).sort();
+    assert.deepStrictEqual(depsOfA, ['A', 'B']);
+    assert.ok(warnings.some(w => /cycle/i.test(w)), 'expected cycle warning');
+  });
+
+  test('getDependents: diamond — A is base, B and C depend on A, D depends on B and C', async () => {
+    writeApp('A', { id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' });
+    writeApp('B', { id: 'b', name: 'B', publisher: 'p', version: '1.0.0.0',
+      dependencies: [{ id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' }] });
+    writeApp('C', { id: 'c', name: 'C', publisher: 'p', version: '1.0.0.0',
+      dependencies: [{ id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' }] });
+    writeApp('D', { id: 'd', name: 'D', publisher: 'p', version: '1.0.0.0',
+      dependencies: [
+        { id: 'b', name: 'B', publisher: 'p', version: '1.0.0.0' },
+        { id: 'c', name: 'C', publisher: 'p', version: '1.0.0.0' },
+      ] });
+
+    model = new WorkspaceModel([tmp]);
+    await model.scan();
+
+    // getDependents(A) = A itself + B + C (direct) + D (transitive via B and C)
+    const depsOfA = model.getDependents('a').map(a => a.name).sort();
+    assert.deepStrictEqual(depsOfA, ['A', 'B', 'C', 'D'], 'diamond: A + B + C + D, no duplicates');
+
+    // No cycle warning should fire for a diamond
+    const warnings: string[] = [];
+    const model2 = new WorkspaceModel([tmp], m => warnings.push(m));
+    await model2.scan();
+    model2.getDependents('a');
+    assert.strictEqual(warnings.length, 0, 'diamond is not a cycle — no warning expected');
+  });
+
+  test('getDependents: isolated app not reachable from queried id returns only itself', async () => {
+    writeApp('A', { id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' });
+    writeApp('X', { id: 'x', name: 'X', publisher: 'p', version: '1.0.0.0' });
+
+    model = new WorkspaceModel([tmp]);
+    await model.scan();
+
+    const depsOfA = model.getDependents('a').map(a => a.name).sort();
+    assert.deepStrictEqual(depsOfA, ['A'], 'no dependents: only itself');
+  });
+});
