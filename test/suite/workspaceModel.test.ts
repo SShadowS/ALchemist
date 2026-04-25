@@ -120,7 +120,8 @@ suite('WorkspaceModel — scan + lookups', () => {
       const model = new WorkspaceModel([tmp], msg => warnings.push(msg));
       await model.scan();
       const names = model.getApps().map(a => a.name);
-      assert.deepStrictEqual(names, ['GoodApp']);
+      assert.ok(names.includes('GoodApp'), 'GoodApp should be loaded');
+      assert.strictEqual(names.length, 1, 'only one app should load');
       assert.ok(warnings.some(w => w.includes('BadApp')), 'expected warning for BadApp');
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });

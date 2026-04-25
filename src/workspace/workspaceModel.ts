@@ -51,7 +51,7 @@ export class WorkspaceModel {
     for (const app of this.apps) {
       const appPrefix = path.resolve(app.path) + path.sep;
       if (abs.startsWith(appPrefix) || abs === path.resolve(app.path)) {
-        if (!best || app.path.length > best.path.length) {
+        if (!best || path.resolve(app.path).length > path.resolve(best.path).length) {
           best = app;
         }
       }
