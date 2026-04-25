@@ -13,7 +13,9 @@ export interface DiscoveredTestCodeunit {
   tests: DiscoveredTest[];
 }
 
-const CODEUNIT_REGEX = /codeunit\s+(\d+)\s+"([^"]+)"/i;
+// Accept both quoted identifiers ("Test Foo") and bare identifiers (TestFoo).
+// Bare identifiers are AL identifier tokens: first char letter/underscore, rest word chars.
+const CODEUNIT_REGEX = /codeunit\s+(\d+)\s+(?:"([^"]+)"|([A-Za-z_]\w*))/i;
 const TEST_ATTR_REGEX = /^\s*\[Test\]\s*$/i;
 const PROCEDURE_REGEX = /^\s*(?:local\s+)?procedure\s+(\w+)\s*\(/i;
 
@@ -41,7 +43,7 @@ export function discoverTestsFromContent(content: string, fileName: string): Dis
         });
       }
       currentCodeunitId = parseInt(codeunitMatch[1], 10);
-      currentCodeunitName = codeunitMatch[2];
+      currentCodeunitName = codeunitMatch[2] ?? codeunitMatch[3];
       currentTests = [];
       continue;
     }

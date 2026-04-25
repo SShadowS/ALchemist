@@ -148,3 +148,90 @@ codeunit 50200 "Test X"
     assert.strictEqual(result.length, 0);
   });
 });
+
+suite('TestDiscovery — unquoted names, namespaces, multiline attrs', () => {
+  test('discovers tests in codeunit with unquoted name', () => {
+    const content = `
+codeunit 71180500 AlertEngineTestSESTM
+{
+    Subtype = Test;
+
+    [Test]
+    procedure NewInsertsAlertWithDefaultSeverity()
+    begin
+    end;
+}`;
+    const result = discoverTestsFromContent(content, 'AlertEngineTest.al');
+    assert.strictEqual(result.length, 1);
+    assert.strictEqual(result[0].codeunitId, 71180500);
+    assert.strictEqual(result[0].codeunitName, 'AlertEngineTestSESTM');
+    assert.strictEqual(result[0].tests.length, 1);
+    assert.strictEqual(result[0].tests[0].name, 'NewInsertsAlertWithDefaultSeverity');
+  });
+
+  test('discovers tests in namespaced file with unquoted codeunit', () => {
+    const content = `namespace STM.BusinessCentral.Sentinel.Test;
+
+using STM.BusinessCentral.Sentinel;
+
+codeunit 71180500 AlertEngineTestSESTM
+{
+    Subtype = Test;
+    Access = Internal;
+
+    [Test]
+    procedure NewInsertsAlertWithDefaultSeverity()
+    begin
+    end;
+}`;
+    const result = discoverTestsFromContent(content, 'AlertEngineTest.al');
+    assert.strictEqual(result.length, 1);
+    assert.strictEqual(result[0].tests.length, 1);
+  });
+
+  test('still discovers tests in codeunit with quoted name (regression)', () => {
+    const content = `
+codeunit 50200 "Test Sales Calculation"
+{
+    Subtype = Test;
+
+    [Test]
+    procedure TestBasicDiscount()
+    begin
+    end;
+}`;
+    const result = discoverTestsFromContent(content, 'TestSales.al');
+    assert.strictEqual(result.length, 1);
+    assert.strictEqual(result[0].codeunitName, 'Test Sales Calculation');
+  });
+
+  test('handles mixed codeunits (one quoted, one unquoted) in same file', () => {
+    const content = `
+codeunit 50100 "Old Style Test"
+{
+    [Test]
+    procedure A() begin end;
+}
+
+codeunit 50101 NewStyleTest
+{
+    [Test]
+    procedure B() begin end;
+}`;
+    const result = discoverTestsFromContent(content, 'Mixed.al');
+    assert.strictEqual(result.length, 2);
+    assert.strictEqual(result[0].codeunitName, 'Old Style Test');
+    assert.strictEqual(result[1].codeunitName, 'NewStyleTest');
+  });
+
+  test('rejects malformed codeunit header (missing id)', () => {
+    const content = `
+codeunit SomeCodeunit
+{
+    [Test]
+    procedure X() begin end;
+}`;
+    const result = discoverTestsFromContent(content, 'Bad.al');
+    assert.strictEqual(result.length, 0);
+  });
+});
