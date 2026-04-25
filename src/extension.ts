@@ -12,7 +12,7 @@ import { IterationStore } from './iteration/iterationStore';
 import { IterationCodeLensProvider, IterationStepperDecoration } from './iteration/iterationCodeLensProvider';
 import { registerIterationCommands, findLoopAtCursor } from './iteration/iterationCommands';
 import { IterationTablePanel } from './iteration/iterationTablePanel';
-import { WorkspaceModel, bindWorkspaceModelToVsCode } from './workspace/workspaceModel';
+import { WorkspaceModel, bindWorkspaceModelToVsCode, FILE_WATCH_DEBOUNCE_MS } from './workspace/workspaceModel';
 import { planSaveRuns } from './testing/saveRouting';
 
 let runnerManager: AlRunnerManager;
@@ -185,7 +185,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       treeRefreshTimer = setTimeout(() => {
         treeRefreshTimer = undefined;
         void testController.refreshTestsFromModel(workspaceModel);
-      }, 200);
+      }, FILE_WATCH_DEBOUNCE_MS);
     }),
   );
 

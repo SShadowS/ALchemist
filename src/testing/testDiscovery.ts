@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { EXCLUDED_DIR_NAMES } from '../workspace/workspaceModel';
 
 export interface DiscoveredTest {
   name: string;
@@ -106,7 +107,7 @@ function findAlFilesSync(dir: string): string[] {
   }
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory() && !SKIP_DIR_NAMES.has(entry.name)) {
+    if (entry.isDirectory() && !EXCLUDED_DIR_NAMES.has(entry.name)) {
       results.push(...findAlFilesSync(fullPath));
     } else if (entry.isFile() && entry.name.endsWith('.al')) {
       results.push(fullPath);
@@ -115,14 +116,3 @@ function findAlFilesSync(dir: string): string[] {
   return results;
 }
 
-const SKIP_DIR_NAMES = new Set([
-  'node_modules',
-  '.alpackages',
-  '.alcache',
-  '.git',
-  '.AL-Go',
-  'bin',
-  'obj',
-  'out',
-  '.snapshots',
-]);

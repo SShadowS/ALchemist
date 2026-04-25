@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as path from 'path';
 import * as sinon from 'sinon';
-import { findAppJsonRootsIn, bindWorkspaceModelToVsCode } from '../../src/workspace/workspaceModel';
+import { findAppJsonRootsIn, bindWorkspaceModelToVsCode, FILE_WATCH_DEBOUNCE_MS } from '../../src/workspace/workspaceModel';
 import { WorkspaceModel } from '../../src/workspace/workspaceModel';
 
 const FIX = path.resolve(__dirname, '../../../test/fixtures');
@@ -413,7 +413,7 @@ suite('bindWorkspaceModelToVsCode', () => {
       assert.strictEqual(triggerSpy.callCount, 0, 'no rescan yet during debounce window');
 
       // Advance just before debounce ends
-      clock.tick(199);
+      clock.tick(FILE_WATCH_DEBOUNCE_MS - 1);
       assert.strictEqual(triggerSpy.callCount, 0, 'still no rescan at 199ms');
 
       // Advance past debounce

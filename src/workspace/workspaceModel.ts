@@ -6,10 +6,11 @@ import { parseAppJsonFile } from './appJsonParser';
 
 export type WarnCallback = (message: string) => void;
 
+/** Trailing-edge debounce for FileSystemWatcher events (ms). */
+export const FILE_WATCH_DEBOUNCE_MS = 200;
+
 export class WorkspaceModel {
   private apps: AlApp[] = [];
-  // Map from app path → AlApp; used for fast dep-graph lookups later.
-  private appsByPath = new Map<string, AlApp>();
   private reverseEdges: Map<string, string[]> | null = null;
   private appsById: Map<string, AlApp> = new Map();
   private cycleDetected: boolean | null = null;
@@ -23,7 +24,6 @@ export class WorkspaceModel {
 
   async scan(): Promise<void> {
     this.apps = [];
-    this.appsByPath.clear();
     this.appsById.clear();
     this.reverseEdges = null;
     this.cycleDetected = null;
@@ -41,7 +41,6 @@ export class WorkspaceModel {
           continue;
         }
         this.apps.push(result.app);
-        this.appsByPath.set(result.app.path, result.app);
         this.appsById.set(result.app.id, result.app);
       }
     }
@@ -181,8 +180,8 @@ function hasCycle(apps: AlApp[]): boolean {
   return false;
 }
 
-/** Directories never recursed into during workspace scan. */
-const EXCLUDED_DIR_NAMES = new Set([
+/** Directories never recursed into during workspace/file scans. Shared by WorkspaceModel and testDiscovery. */
+export const EXCLUDED_DIR_NAMES = new Set([
   '.alpackages',
   '.alcache',
   'node_modules',
@@ -244,7 +243,7 @@ export function bindWorkspaceModelToVsCode(
   let timer: NodeJS.Timeout | undefined;
   const schedule = () => {
     if (timer) clearTimeout(timer);
-    timer = setTimeout(() => { timer = undefined; void model.triggerRescan(); }, 200);
+    timer = setTimeout(() => { timer = undefined; void model.triggerRescan(); }, FILE_WATCH_DEBOUNCE_MS);
   };
   const subs = [
     watcher.onDidCreate(schedule),
