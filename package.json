@@ -209,7 +209,7 @@
             "off"
           ],
           "default": "current",
-          "description": "Which tests to run on save."
+          "description": "Which tests to run on save. 'current' = tests in the saved file's app plus apps transitively depending on it. 'all' = every test in every AL app in the workspace. 'off' = no save-triggered runs."
         },
         "alchemist.showOutputOnError": {
           "type": "string",
