@@ -263,3 +263,84 @@ suite('WorkspaceModel — dep graph', () => {
     assert.deepStrictEqual(depsOfA, ['A'], 'no dependents: only itself');
   });
 });
+
+suite('WorkspaceModel — watcher + onDidChange', () => {
+  test('watch(triggerRescan) rescans and fires onDidChange when triggered', async () => {
+    const os = require('os');
+    const fsp = require('fs');
+    const tmp = fsp.mkdtempSync(path.join(os.tmpdir(), 'alchemist-watch-test-'));
+    try {
+      fsp.mkdirSync(path.join(tmp, 'A'), { recursive: true });
+      fsp.writeFileSync(path.join(tmp, 'A', 'app.json'),
+        JSON.stringify({ id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' }));
+
+      const model = new WorkspaceModel([tmp]);
+      await model.scan();
+      assert.strictEqual(model.getApps().length, 1);
+
+      let fired = 0;
+      const unsub = model.onDidChange(() => { fired++; });
+
+      // Simulate watcher firing after a new app.json is created.
+      fsp.mkdirSync(path.join(tmp, 'B'), { recursive: true });
+      fsp.writeFileSync(path.join(tmp, 'B', 'app.json'),
+        JSON.stringify({ id: 'b', name: 'B', publisher: 'p', version: '1.0.0.0' }));
+      await model.triggerRescan();
+
+      assert.strictEqual(fired, 1, 'onDidChange fired once');
+      assert.strictEqual(model.getApps().length, 2);
+      unsub();
+    } finally {
+      fsp.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('onDidChange does not fire when rescan finds no changes', async () => {
+    const os = require('os');
+    const fsp = require('fs');
+    const tmp = fsp.mkdtempSync(path.join(os.tmpdir(), 'alchemist-watch-test-'));
+    try {
+      fsp.mkdirSync(path.join(tmp, 'A'), { recursive: true });
+      fsp.writeFileSync(path.join(tmp, 'A', 'app.json'),
+        JSON.stringify({ id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' }));
+      const model = new WorkspaceModel([tmp]);
+      await model.scan();
+
+      let fired = 0;
+      model.onDidChange(() => { fired++; });
+      await model.triggerRescan(); // no filesystem change
+      assert.strictEqual(fired, 0);
+    } finally {
+      fsp.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('unsubscribed listener does not fire after unsub()', async () => {
+    const os = require('os');
+    const fsp = require('fs');
+    const tmp = fsp.mkdtempSync(path.join(os.tmpdir(), 'alchemist-watch-test-'));
+    try {
+      fsp.mkdirSync(path.join(tmp, 'A'), { recursive: true });
+      fsp.writeFileSync(path.join(tmp, 'A', 'app.json'),
+        JSON.stringify({ id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' }));
+      const model = new WorkspaceModel([tmp]);
+      await model.scan();
+
+      let fired = 0;
+      const unsub = model.onDidChange(() => { fired++; });
+      // Unsubscribe before triggering a change
+      unsub();
+      // Calling unsub again should be safe (no throw)
+      unsub();
+
+      fsp.mkdirSync(path.join(tmp, 'B'), { recursive: true });
+      fsp.writeFileSync(path.join(tmp, 'B', 'app.json'),
+        JSON.stringify({ id: 'b', name: 'B', publisher: 'p', version: '1.0.0.0' }));
+      await model.triggerRescan();
+
+      assert.strictEqual(fired, 0, 'listener must not fire after unsubscribe');
+    } finally {
+      fsp.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});

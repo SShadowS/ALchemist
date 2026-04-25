@@ -12,6 +12,8 @@ export class WorkspaceModel {
   private reverseEdges: Map<string, string[]> | null = null;
   private appsById: Map<string, AlApp> = new Map();
   private cycleDetected: boolean | null = null;
+  private listeners = new Set<() => void>();
+  private lastSignature = '';
 
   constructor(
     private workspaceFolders: string[],
@@ -42,6 +44,38 @@ export class WorkspaceModel {
         this.appsById.set(result.app.id, result.app);
       }
     }
+
+    this.lastSignature = this.computeSignature();
+  }
+
+  /**
+   * Subscribe to workspace-model changes. Returns an unsubscribe function.
+   * Fires exactly once per `triggerRescan` that produces a different app set
+   * (identity by app.path + version string).
+   */
+  onDidChange(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  /**
+   * Force a rescan. Intended to be called from a debounced FileSystemWatcher
+   * handler in production; also called directly from tests.
+   */
+  async triggerRescan(): Promise<void> {
+    const prevSignature = this.lastSignature;
+    await this.scan(); // scan() sets this.lastSignature to the new signature
+    if (this.lastSignature !== prevSignature) {
+      for (const listener of this.listeners) listener();
+    }
+  }
+
+  private computeSignature(): string {
+    return this.apps
+      .slice()
+      .sort((a, b) => a.path.localeCompare(b.path))
+      .map(a => `${a.path}|${a.id}|${a.version}|${a.dependencies.map(d => d.id).join(',')}`)
+      .join('\n');
   }
 
   getApps(): AlApp[] {
@@ -192,4 +226,37 @@ export function findAppJsonRootsIn(root: string): string[] {
       }
     }
   }
+}
+
+import type * as vscode from 'vscode';
+
+/**
+ * Wire a WorkspaceModel to VS Code FileSystemWatcher events. The watcher
+ * observes every `app.json` under every workspaceFolder; changes debounce
+ * (200ms trailing) into a single `triggerRescan` call.
+ *
+ * Returns a disposable that tears down the watcher.
+ */
+export function bindWorkspaceModelToVsCode(
+  model: WorkspaceModel,
+  vscodeApi: typeof vscode,
+): { dispose(): void } {
+  const watcher = vscodeApi.workspace.createFileSystemWatcher('**/app.json');
+  let timer: NodeJS.Timeout | undefined;
+  const schedule = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => { timer = undefined; void model.triggerRescan(); }, 200);
+  };
+  const subs = [
+    watcher.onDidCreate(schedule),
+    watcher.onDidChange(schedule),
+    watcher.onDidDelete(schedule),
+  ];
+  return {
+    dispose() {
+      if (timer) clearTimeout(timer);
+      for (const s of subs) s.dispose();
+      watcher.dispose();
+    },
+  };
 }
