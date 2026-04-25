@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import type * as vscode from 'vscode';
 import { AlApp } from './types';
 import { parseAppJsonFile } from './appJsonParser';
 
@@ -227,8 +228,6 @@ export function findAppJsonRootsIn(root: string): string[] {
     }
   }
 }
-
-import type * as vscode from 'vscode';
 
 /**
  * Wire a WorkspaceModel to VS Code FileSystemWatcher events. The watcher

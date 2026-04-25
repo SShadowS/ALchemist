@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import * as path from 'path';
-import { findAppJsonRootsIn } from '../../src/workspace/workspaceModel';
+import * as sinon from 'sinon';
+import { findAppJsonRootsIn, bindWorkspaceModelToVsCode } from '../../src/workspace/workspaceModel';
 import { WorkspaceModel } from '../../src/workspace/workspaceModel';
 
 const FIX = path.resolve(__dirname, '../../../test/fixtures');
@@ -339,6 +340,113 @@ suite('WorkspaceModel — watcher + onDidChange', () => {
       await model.triggerRescan();
 
       assert.strictEqual(fired, 0, 'listener must not fire after unsubscribe');
+    } finally {
+      fsp.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+suite('bindWorkspaceModelToVsCode', () => {
+  let clock: sinon.SinonFakeTimers;
+  setup(() => { clock = sinon.useFakeTimers(); });
+  teardown(() => { clock.restore(); });
+
+  function makeMockVsCodeApi() {
+    const handlers: { [k: string]: (() => void)[] } = { create: [], change: [], delete: [] };
+    const watcher = {
+      onDidCreate: (h: () => void) => { handlers.create.push(h); return { dispose: () => {} }; },
+      onDidChange: (h: () => void) => { handlers.change.push(h); return { dispose: () => {} }; },
+      onDidDelete: (h: () => void) => { handlers.delete.push(h); return { dispose: () => {} }; },
+      dispose: sinon.spy(),
+    };
+    const api = {
+      workspace: {
+        createFileSystemWatcher: sinon.stub().returns(watcher),
+      },
+    };
+    return { api, watcher, handlers };
+  }
+
+  test('subscribes to all three watcher events', () => {
+    const os = require('os');
+    const fsp = require('fs');
+    const tmp = fsp.mkdtempSync(path.join(os.tmpdir(), 'alchemist-bind-test-'));
+    try {
+      const model = new WorkspaceModel([tmp]);
+      const { api, handlers } = makeMockVsCodeApi();
+
+      const binding = bindWorkspaceModelToVsCode(model, api as any);
+
+      assert.strictEqual(handlers.create.length, 1, 'create handler registered');
+      assert.strictEqual(handlers.change.length, 1, 'change handler registered');
+      assert.strictEqual(handlers.delete.length, 1, 'delete handler registered');
+
+      binding.dispose();
+    } finally {
+      fsp.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('debounces multiple events into one triggerRescan call (200ms trailing)', async () => {
+    const os = require('os');
+    const fsp = require('fs');
+    const tmp = fsp.mkdtempSync(path.join(os.tmpdir(), 'alchemist-bind-test-'));
+    try {
+      fsp.mkdirSync(path.join(tmp, 'A'), { recursive: true });
+      fsp.writeFileSync(path.join(tmp, 'A', 'app.json'),
+        JSON.stringify({ id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' }));
+
+      const model = new WorkspaceModel([tmp]);
+      await model.scan();
+      const triggerSpy = sinon.spy(model, 'triggerRescan');
+
+      const { api, handlers } = makeMockVsCodeApi();
+      const binding = bindWorkspaceModelToVsCode(model, api as any);
+
+      // Fire 5 events in rapid succession
+      handlers.create[0]();
+      handlers.change[0]();
+      handlers.change[0]();
+      handlers.delete[0]();
+      handlers.create[0]();
+
+      assert.strictEqual(triggerSpy.callCount, 0, 'no rescan yet during debounce window');
+
+      // Advance just before debounce ends
+      clock.tick(199);
+      assert.strictEqual(triggerSpy.callCount, 0, 'still no rescan at 199ms');
+
+      // Advance past debounce
+      clock.tick(2);
+      assert.strictEqual(triggerSpy.callCount, 1, 'one rescan after 200ms');
+
+      binding.dispose();
+      triggerSpy.restore();
+    } finally {
+      fsp.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('dispose() clears pending timer and disposes watcher', () => {
+    const os = require('os');
+    const fsp = require('fs');
+    const tmp = fsp.mkdtempSync(path.join(os.tmpdir(), 'alchemist-bind-test-'));
+    try {
+      const model = new WorkspaceModel([tmp]);
+      const triggerSpy = sinon.spy(model, 'triggerRescan');
+      const { api, watcher, handlers } = makeMockVsCodeApi();
+      const binding = bindWorkspaceModelToVsCode(model, api as any);
+
+      // Fire an event, then dispose before debounce completes
+      handlers.create[0]();
+      binding.dispose();
+
+      // Advance past debounce — no rescan should fire because timer was cleared
+      clock.tick(500);
+      assert.strictEqual(triggerSpy.callCount, 0, 'dispose() cancels pending rescan');
+      assert.strictEqual((watcher.dispose as sinon.SinonSpy).callCount, 1, 'watcher.dispose called');
+
+      triggerSpy.restore();
     } finally {
       fsp.rmSync(tmp, { recursive: true, force: true });
     }
