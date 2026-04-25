@@ -32,6 +32,18 @@ export function buildRunnerArgs(mode: ExecutionMode, filePath: string, workspace
   }
 }
 
+/**
+ * Return true iff we should retry the test run as a single-file standalone
+ * execution. AL.Runner 1.0.12+ uses exit code 3 for AL compile errors; older
+ * versions used 1 for everything so we also retry on exit 1 with zero tests
+ * captured (no tests discovered => project likely failed to compile).
+ */
+export function shouldFallbackSingleFile(exitCode: number, testCount: number): boolean {
+  if (exitCode === 3) return true;
+  if (exitCode === 1 && testCount === 0) return true;
+  return false;
+}
+
 export class Executor {
   private currentProcess: cp.ChildProcess | undefined;
   private readonly onDidStartRun = new vscode.EventEmitter<ExecutionMode>();
@@ -60,7 +72,7 @@ export class Executor {
 
     // Fallback: if test mode failed with no tests (e.g. missing project dependencies),
     // retry with just the single file standalone
-    if (mode === 'test' && result.tests.length === 0 && result.exitCode !== 0 && filePath.endsWith('.al')) {
+    if (mode === 'test' && shouldFallbackSingleFile(result.exitCode, result.tests.length) && filePath.endsWith('.al')) {
       // Retry with just the single file, but keep --coverage for gutter display
       const fallbackArgs = {
         args: ['--output-json', '--capture-values', '--iteration-tracking', '--coverage', filePath],

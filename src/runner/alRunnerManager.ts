@@ -1,6 +1,11 @@
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 
+// Minimum supported AL.Runner version. Newer releases provide:
+//  - 1.0.12+: differentiated exit codes (0/1/2/3), HTTP type compile fix,
+//    --output-junit flag, per-file caches.
+const MIN_AL_RUNNER_VERSION = '1.0.12';
+
 export class AlRunnerManager {
   private resolvedPath: string | undefined;
 
