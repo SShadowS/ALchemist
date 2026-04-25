@@ -189,6 +189,42 @@ suite('WorkspaceModel — dep graph', () => {
     assert.ok(warnings.some(w => /cycle/i.test(w)), 'expected cycle warning');
   });
 
+  test('cycle warning fires only once across multiple getDependents calls per scan', async () => {
+    writeApp('A', { id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0',
+      dependencies: [{ id: 'b', name: 'B', publisher: 'p', version: '1.0.0.0' }] });
+    writeApp('B', { id: 'b', name: 'B', publisher: 'p', version: '1.0.0.0',
+      dependencies: [{ id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' }] });
+
+    const warnings: string[] = [];
+    model = new WorkspaceModel([tmp], m => warnings.push(m));
+    await model.scan();
+
+    model.getDependents('a');
+    model.getDependents('b');
+    model.getDependents('a'); // call again
+
+    const cycleWarnings = warnings.filter(w => /cycle/i.test(w));
+    assert.strictEqual(cycleWarnings.length, 1, 'cycle warning should fire exactly once per scan');
+  });
+
+  test('rescan resets cycle warning state (warning fires once after each scan)', async () => {
+    writeApp('A', { id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0',
+      dependencies: [{ id: 'b', name: 'B', publisher: 'p', version: '1.0.0.0' }] });
+    writeApp('B', { id: 'b', name: 'B', publisher: 'p', version: '1.0.0.0',
+      dependencies: [{ id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' }] });
+
+    const warnings: string[] = [];
+    model = new WorkspaceModel([tmp], m => warnings.push(m));
+    await model.scan();
+    model.getDependents('a'); // fires warning #1
+
+    await model.scan(); // re-scan
+    model.getDependents('a'); // should fire warning #2 since cache was reset
+
+    const cycleWarnings = warnings.filter(w => /cycle/i.test(w));
+    assert.strictEqual(cycleWarnings.length, 2, 'cycle warning fires once per scan');
+  });
+
   test('getDependents: diamond — A is base, B and C depend on A, D depends on B and C', async () => {
     writeApp('A', { id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' });
     writeApp('B', { id: 'b', name: 'B', publisher: 'p', version: '1.0.0.0',

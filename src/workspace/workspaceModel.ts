@@ -9,6 +9,9 @@ export class WorkspaceModel {
   private apps: AlApp[] = [];
   // Map from app path → AlApp; used for fast dep-graph lookups later.
   private appsByPath = new Map<string, AlApp>();
+  private reverseEdges: Map<string, string[]> | null = null;
+  private appsById: Map<string, AlApp> = new Map();
+  private cycleDetected: boolean | null = null;
 
   constructor(
     private workspaceFolders: string[],
@@ -18,6 +21,9 @@ export class WorkspaceModel {
   async scan(): Promise<void> {
     this.apps = [];
     this.appsByPath.clear();
+    this.appsById.clear();
+    this.reverseEdges = null;
+    this.cycleDetected = null;
 
     const seen = new Set<string>();
     for (const folder of this.workspaceFolders) {
@@ -33,6 +39,7 @@ export class WorkspaceModel {
         }
         this.apps.push(result.app);
         this.appsByPath.set(result.app.path, result.app);
+        this.appsById.set(result.app.id, result.app);
       }
     }
   }
@@ -49,36 +56,42 @@ export class WorkspaceModel {
    * Returns [] if appId matches no known app.
    */
   getDependents(appId: string): AlApp[] {
-    const root = this.apps.find(a => a.id === appId);
+    const root = this.appsById.get(appId);
     if (!root) return [];
 
-    // Build reverse adjacency: for each app, which apps list it in deps.
-    const reverseEdges = new Map<string, string[]>();
-    for (const app of this.apps) {
-      for (const dep of app.dependencies) {
-        const list = reverseEdges.get(dep.id) ?? [];
-        list.push(app.id);
-        reverseEdges.set(dep.id, list);
+    // Build reverse adjacency once, cache until next scan().
+    if (!this.reverseEdges) {
+      this.reverseEdges = new Map<string, string[]>();
+      for (const app of this.apps) {
+        for (const dep of app.dependencies) {
+          const list = this.reverseEdges.get(dep.id) ?? [];
+          list.push(app.id);
+          this.reverseEdges.set(dep.id, list);
+        }
+      }
+    }
+
+    // Cache cycle-detection result once per scan.
+    if (this.cycleDetected === null) {
+      this.cycleDetected = hasCycle(this.apps);
+      if (this.cycleDetected) {
+        this.warn('ALchemist: dependency cycle detected in app.json graph; results may be incomplete.');
       }
     }
 
     const visited = new Set<string>();
     const result: AlApp[] = [];
+    const reverseEdges = this.reverseEdges;
+    const appsById = this.appsById;
 
-    const dfs = (id: string) => {
+    function dfs(id: string): void {
       if (visited.has(id)) return;
       visited.add(id);
-      const app = this.apps.find(a => a.id === id);
+      const app = appsById.get(id);
       if (app) result.push(app);
-
       for (const dependentId of reverseEdges.get(id) ?? []) {
         dfs(dependentId);
       }
-    };
-
-    // Detect cycles via standard three-color DFS on forward edges.
-    if (hasCycle(this.apps)) {
-      this.warn('ALchemist: dependency cycle detected in app.json graph; results may be incomplete.');
     }
 
     dfs(appId);
