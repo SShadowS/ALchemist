@@ -1,0 +1,11 @@
+{
+  "id": "11111111-1111-1111-1111-111111111111",
+  "name": "MainApp",
+  "publisher": "ALchemist Tests",
+  "version": "1.0.0.0",
+  "dependencies": [],
+  "idRanges": [{ "from": 50000, "to": 50099 }],
+  "runtime": "13.0",
+  "platform": "26.0.0.0",
+  "application": "26.0.0.0"
+}
