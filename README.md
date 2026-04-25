@@ -36,6 +36,7 @@ Live execution and inline feedback for AL (Business Central) — like [Quokka.js
 | **Value change flash** | Inline values briefly highlight when they change between iterations |
 | **Theme-aware colors** | Inline decoration colors adapt to light/dark/high-contrast themes and are user-customizable |
 | **Auto-install** | AL.Runner is downloaded automatically on first use |
+| **Multi-app workspace** | Discovers every AL app across every workspace folder; Test Explorer groups by app; save routes tests via `app.json` dependencies |
 
 ## Prerequisites
 

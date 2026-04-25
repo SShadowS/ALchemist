@@ -1,5 +1,24 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+
+- **Multi-app workspace support** — ALchemist now discovers AL apps (folders with `app.json`) across every workspace folder, not just the first. Works correctly on `.code-workspace` multi-root setups.
+- **Test Explorer grouped by app** — Tests appear as App → Codeunit → Procedure. Multiple apps with same-named codeunits no longer collide.
+- **Dependency-aware save routing** — Saving a file in a main app runs tests in every app that transitively depends on it (via `app.json` `dependencies`). Save in a test app runs only that app's tests.
+- **Scratch-project multi-app selection** — Project-aware scratch files (`//alchemist: project`) in multi-app workspaces prompt for an AL app context on first use; choice persists per scratch file. Explicit override via `alchemist.scratchProjectAppId` setting.
+
+### Fixes
+
+- **Codeunit regex accepts unquoted names** — Discovery previously failed on `codeunit 50000 Name` (bare identifier); now accepts both quoted and unquoted forms. Unblocks real-world repos like BusinessCentral.Sentinel.
+- **Fallback retry gated on AL compile error** — `executor.ts` previously retried every non-zero exit. Now retries only on exit code 3 (AL compile error) with AL.Runner 1.0.12+, or exit 1 with zero tests captured (legacy compatibility). Assertion failures and runner limitations no longer trigger spurious single-file retries.
+- **Removed `workspaceFolders[0]` assumption** — Every call site that implicitly assumed a single workspace folder now resolves the owning AL app via `WorkspaceModel`.
+
+### Requires
+
+- AL.Runner **1.0.12+** for differentiated exit codes and HTTP type compile fix. Older runners still work but fall back to legacy exit-code handling.
+
 ## 0.3.0 (2026-04-17)
 
 ### Features
