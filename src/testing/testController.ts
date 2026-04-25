@@ -143,9 +143,15 @@ export class AlchemistTestController {
     // Multi-app mode (Task 10+)
     if (request.include && request.include.length > 0) {
       const groups = groupTestItemsByApp(request.include);
+      const apps = this.model.getApps();
       for (const [appId, items] of groups) {
-        const app = this.model.getApps().find(a => a.id === appId);
+        const app = apps.find(a => a.id === appId);
         if (!app) { continue; }
+        // Routing semantics: only `test-` items pass --run <procName> to AL.Runner.
+        // `app-*` and `codeunit-*` items fall through with procedureName=undefined,
+        // which runs every test in that app. AL.Runner does not yet expose a
+        // codeunit-scope flag; widening to app-level is the closest available
+        // behavior for codeunit selections.
         for (const item of items) {
           const procedureName = item.id.startsWith('test-') ? (item as vscode.TestItem).label : undefined;
           await this.executor.execute('test', app.path, app.path, procedureName);
@@ -159,7 +165,15 @@ export class AlchemistTestController {
     }
   }
 
-  /** Multi-app tree refresh. Replaces refreshTests in Task 12. */
+  /**
+   * Multi-app tree refresh. Replaces refreshTests in Task 12.
+   *
+   * INVARIANT: the `model` passed here must be the same instance stored in
+   * `this.model` at construction time. The tree's TestItem ids embed app
+   * GUIDs from `model.getApps()`, and `runTests` routes selections back via
+   * `this.model.getApps()`. If they diverge, `runTests` silently drops items
+   * because `apps.find(a => a.id === appId)` returns undefined.
+   */
   async refreshTestsFromModel(model: WorkspaceModel): Promise<void> {
     const tree = buildTestTree(model);
     this.controller.items.replace([]);
