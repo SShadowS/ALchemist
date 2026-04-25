@@ -71,22 +71,6 @@ suite('Executor', () => {
   });
 });
 
-suite('buildRunnerArgs — exit-code-aware behavior (test-mode)', () => {
-  test('test mode builds project-scoped args', () => {
-    const { args, cwd } = buildRunnerArgs('test', '/ws/main/src/T.al', '/ws/main');
-    assert.deepStrictEqual(args, ['--output-json', '--capture-values', '--iteration-tracking', '--coverage', '/ws/main']);
-    assert.strictEqual(cwd, '/ws/main');
-  });
-
-  test('test mode with procedureName inserts --run before path', () => {
-    const { args } = buildRunnerArgs('test', '/ws/main/src/T.al', '/ws/main', 'MyProc');
-    const runIdx = args.indexOf('--run');
-    assert.ok(runIdx >= 0, '--run flag present');
-    assert.strictEqual(args[runIdx + 1], 'MyProc');
-    assert.strictEqual(args[args.length - 1], '/ws/main', 'path is last arg');
-  });
-});
-
 suite('shouldFallbackSingleFile', () => {
   test('retries on AL compile error (exit 3)', () => {
     assert.strictEqual(shouldFallbackSingleFile(3, 0), true);

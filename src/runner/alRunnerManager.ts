@@ -4,6 +4,9 @@ import * as cp from 'child_process';
 // Minimum supported AL.Runner version. Newer releases provide:
 //  - 1.0.12+: differentiated exit codes (0/1/2/3), HTTP type compile fix,
 //    --output-junit flag, per-file caches.
+// TODO: wire into ensureInstalled/checkForUpdates to warn when an older
+// runner is resolved. Tracking as follow-up work; declared now so the
+// required version is discoverable in one place.
 const MIN_AL_RUNNER_VERSION = '1.0.12';
 
 export class AlRunnerManager {
