@@ -25,6 +25,9 @@ suite('AppJsonParser', () => {
   test('returns error on missing file', () => {
     const result = parseAppJsonFile('/definitely/does/not/exist/app.json');
     assert.strictEqual(result.ok, false);
+    if (result.ok) return;
+    assert.ok(/read failed/i.test(result.error.message), `expected message to mention 'read failed', got: ${result.error.message}`);
+    assert.strictEqual(result.error.path, '/definitely/does/not/exist/app.json');
   });
 
   test('returns error on invalid JSON', () => {
@@ -48,6 +51,38 @@ suite('AppJsonParser', () => {
       id: 'abc', publisher: 'Y', version: '1.0.0.0',
     }), '/tmp/missing-name.json');
     assert.strictEqual(result.ok, false);
+    if (result.ok) return;
+    assert.ok(/name/.test(result.error.message), `expected message to mention 'name', got: ${result.error.message}`);
+  });
+
+  test('reports all missing required fields when multiple are absent', () => {
+    const result = parseAppJsonContent(JSON.stringify({
+      version: '1.0.0.0',
+    }), '/tmp/missing-many.json');
+    assert.strictEqual(result.ok, false);
+    if (result.ok) return;
+    // id, name, publisher all missing — message should mention each
+    assert.ok(/id/.test(result.error.message), 'message mentions id');
+    assert.ok(/name/.test(result.error.message), 'message mentions name');
+    assert.ok(/publisher/.test(result.error.message), 'message mentions publisher');
+  });
+
+  test('returns error when required field publisher is missing', () => {
+    const result = parseAppJsonContent(JSON.stringify({
+      id: 'abc', name: 'N', version: '1.0.0.0',
+    }), '/tmp/missing-publisher.json');
+    assert.strictEqual(result.ok, false);
+    if (result.ok) return;
+    assert.ok(/publisher/.test(result.error.message));
+  });
+
+  test('returns error when required field version is missing', () => {
+    const result = parseAppJsonContent(JSON.stringify({
+      id: 'abc', name: 'N', publisher: 'P',
+    }), '/tmp/missing-version.json');
+    assert.strictEqual(result.ok, false);
+    if (result.ok) return;
+    assert.ok(/version/.test(result.error.message));
   });
 
   test('treats missing dependencies array as empty', () => {
