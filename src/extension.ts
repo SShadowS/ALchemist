@@ -156,13 +156,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           } else {
             // needsPrompt
             const pick = await vscode.window.showQuickPick(
-              resolution.choices.map(c => ({ label: c.name, description: c.path, appId: c.id })),
+              resolution.choices.map(c => ({ label: c.name, description: c.path, appId: c.id, appPath: c.path })),
               { placeHolder: 'Select AL app context for this scratch file' },
             );
             if (!pick) return;
             await context.globalState.update(`alchemist.scratchApp.${filePath}`, pick.appId);
-            const chosen = resolution.choices.find(c => c.id === pick.appId)!;
-            await executor.execute('scratch-project', filePath, chosen.path);
+            await executor.execute('scratch-project', filePath, pick.appPath);
           }
         } else {
           await executor.execute('scratch-standalone', filePath);
@@ -246,13 +245,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           } else {
             // needsPrompt
             const pick = await vscode.window.showQuickPick(
-              resolution.choices.map(c => ({ label: c.name, description: c.path, appId: c.id })),
+              resolution.choices.map(c => ({ label: c.name, description: c.path, appId: c.id, appPath: c.path })),
               { placeHolder: 'Select AL app context for this scratch file' },
             );
             if (!pick) return;
             await context.globalState.update(`alchemist.scratchApp.${filePath}`, pick.appId);
-            const chosen = resolution.choices.find(c => c.id === pick.appId)!;
-            await executor.execute('scratch-project', filePath, chosen.path);
+            await executor.execute('scratch-project', filePath, pick.appPath);
           }
         } else {
           await executor.execute('scratch-standalone', filePath);
