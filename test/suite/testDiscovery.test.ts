@@ -291,7 +291,7 @@ codeunit 50201 CombinedAttrTest
     // Behavior: TEST_ATTR_REGEX is /^\s*\[Test\]\s*$/i — strict equality, requiring
     // [Test] alone on the line. Combined-attribute syntax [Test, HandlerFunctions(...)]
     // does NOT match. This is a known limitation; Plan B's tree-sitter discovery fixes it.
-    assert.strictEqual(result.length, 0, 'documented gap: combined attrs not detected (Plan B fixes via tree-sitter)');
+    assert.strictEqual(result.length, 0, 'documented gap: comma-separated [Test, HandlerFunctions(...)] not detected; stacked [Test] then [HandlerFunctions(...)] on next line works (Plan B fixes via tree-sitter)');
   });
 
   test('discovers test in codeunit with underscore-prefixed bare name', () => {
@@ -311,5 +311,6 @@ codeunit 50300 _LegacyName
     assert.strictEqual(result.length, 1);
     assert.strictEqual(result[0].codeunitName, '_LegacyName');
     assert.strictEqual(result[0].tests.length, 1);
+    assert.strictEqual(result[0].tests[0].name, 'RunsCleanly');
   });
 });
