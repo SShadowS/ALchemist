@@ -66,7 +66,7 @@ export class AlchemistTestController {
     );
   }
 
-  /** @deprecated use refreshTestsFromModel — remains until Task 12 rewires extension.ts */
+  /** @deprecated use refreshTestsFromModel; legacy path retained for backward compat. Will be removed once all callers migrate. */
   async refreshTests(workspacePath: string): Promise<void> {
     const codeunits = await discoverTestsInWorkspace(workspacePath);
 

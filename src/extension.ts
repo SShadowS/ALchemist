@@ -27,6 +27,8 @@ let iterationTablePanel: IterationTablePanel;
 let lastExecutionResult: import('./runner/outputParser').ExecutionResult | undefined;
 let workspaceModel: WorkspaceModel;
 let modelBinding: { dispose(): void } | undefined;
+let treeRefreshTimer: NodeJS.Timeout | undefined;
+let modelChangeUnsub: (() => void) | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   console.log('ALchemist: activating...');
@@ -67,7 +69,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   await testController.refreshTestsFromModel(workspaceModel);
 
   // Refresh on app.json changes
-  workspaceModel.onDidChange(() => {
+  modelChangeUnsub = workspaceModel.onDidChange(() => {
     void testController.refreshTestsFromModel(workspaceModel);
   });
 
@@ -156,7 +158,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   // Debounced tree refresh when any .al file is saved (catches new test procs added)
-  let treeRefreshTimer: NodeJS.Timeout | undefined;
   context.subscriptions.push(
     vscode.workspace.onDidSaveTextDocument((doc) => {
       if (doc.languageId !== 'al') return;
@@ -328,4 +329,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 export function deactivate(): void {
   modelBinding?.dispose();
+  if (treeRefreshTimer) {
+    clearTimeout(treeRefreshTimer);
+    treeRefreshTimer = undefined;
+  }
+  modelChangeUnsub?.();
 }
