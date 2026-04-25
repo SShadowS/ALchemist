@@ -23,12 +23,39 @@ export function buildTestTree(model: WorkspaceModel): TestTreeAppNode[] {
   }));
 }
 
+/**
+ * Groups TestItems by their owning app id, extracted from the compound id
+ * format used by refreshTestsFromModel:
+ *   app-<guid>
+ *   codeunit-<guid>-<codeunitId>
+ *   test-<guid>-<codeunitId>-<procName>
+ *
+ * App GUIDs are 8-4-4-4-12 hex chars (standard UUID format). Items whose ids
+ * do not match this pattern are placed in the empty-string bucket.
+ */
+export function groupTestItemsByApp(items: readonly { id: string }[]): Map<string, { id: string }[]> {
+  const groups = new Map<string, { id: string }[]>();
+  // Match prefix (app|codeunit|test) followed by a full GUID (8-4-4-4-12 hex).
+  const idPattern = /^(?:app|codeunit|test)-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+  for (const item of items) {
+    const match = idPattern.exec(item.id);
+    const appId = match ? match[1] : '';
+    const list = groups.get(appId) ?? [];
+    list.push(item);
+    groups.set(appId, list);
+  }
+  return groups;
+}
+
 export class AlchemistTestController {
   private readonly controller: vscode.TestController;
   private readonly testItems = new Map<string, vscode.TestItem>();
   private readonly testItemsById = new Map<string, vscode.TestItem>();
 
-  constructor(private readonly executor: Executor) {
+  constructor(
+    private readonly executor: Executor,
+    private readonly model?: WorkspaceModel,
+  ) {
     this.controller = vscode.tests.createTestController('alchemist', 'ALchemist');
 
     this.controller.createRunProfile(
@@ -97,20 +124,38 @@ export class AlchemistTestController {
   }
 
   private async runTests(request: vscode.TestRunRequest, token: vscode.CancellationToken): Promise<void> {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) { return; }
-
     token.onCancellationRequested(() => this.executor.cancel());
 
+    if (!this.model) {
+      // Legacy mode: fall back to single-folder behavior pre-Task-12 wiring.
+      const wsf = vscode.workspace.workspaceFolders?.[0];
+      if (!wsf) { return; }
+      if (request.include && request.include.length > 0) {
+        for (const item of request.include) {
+          await this.executor.execute('test', wsf.uri.fsPath, wsf.uri.fsPath, item.label);
+        }
+      } else {
+        await this.executor.execute('test', wsf.uri.fsPath, wsf.uri.fsPath);
+      }
+      return;
+    }
+
+    // Multi-app mode (Task 10+)
     if (request.include && request.include.length > 0) {
-      // Run individual tests via --run
-      for (const item of request.include) {
-        // Test items use the test procedure name as their label
-        await this.executor.execute('test', workspaceFolder.uri.fsPath, workspaceFolder.uri.fsPath, item.label);
+      const groups = groupTestItemsByApp(request.include);
+      for (const [appId, items] of groups) {
+        const app = this.model.getApps().find(a => a.id === appId);
+        if (!app) { continue; }
+        for (const item of items) {
+          const procedureName = item.id.startsWith('test-') ? (item as vscode.TestItem).label : undefined;
+          await this.executor.execute('test', app.path, app.path, procedureName);
+        }
       }
     } else {
-      // Run all tests
-      await this.executor.execute('test', workspaceFolder.uri.fsPath, workspaceFolder.uri.fsPath);
+      // Run All: iterate every app.
+      for (const app of this.model.getApps()) {
+        await this.executor.execute('test', app.path, app.path);
+      }
     }
   }
 

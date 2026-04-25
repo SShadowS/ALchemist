@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as path from 'path';
-import { buildTestTree } from '../../src/testing/testController';
+import { buildTestTree, groupTestItemsByApp } from '../../src/testing/testController';
 import { WorkspaceModel } from '../../src/workspace/workspaceModel';
 
 const FIX = path.resolve(__dirname, '../../../test/fixtures');
@@ -84,5 +84,36 @@ suite('TestController — multi-app id uniqueness', () => {
     } finally {
       fsp.rmSync(tmp, { recursive: true, force: true });
     }
+  });
+});
+
+suite('TestController — groupTestItemsByApp', () => {
+  test('groups items by owning app using their id prefix', () => {
+    const aaa = '11111111-1111-1111-1111-111111111111';
+    const bbb = '22222222-2222-2222-2222-222222222222';
+    const items = [
+      { id: `app-${aaa}` },
+      { id: `codeunit-${aaa}-50100` },
+      { id: `test-${aaa}-50100-Foo` },
+      { id: `test-${bbb}-50200-Bar` },
+    ];
+    const groups = groupTestItemsByApp(items as any);
+    assert.strictEqual(groups.size, 2);
+    assert.strictEqual(groups.get(aaa)!.length, 3);
+    assert.strictEqual(groups.get(bbb)!.length, 1);
+  });
+
+  test('items with unparseable ids land in an empty-id bucket', () => {
+    const items = [{ id: 'something-weird' }];
+    const groups = groupTestItemsByApp(items as any);
+    assert.ok(groups.has(''));
+  });
+
+  test('non-GUID app id lands in the empty bucket (defensive)', () => {
+    // Apps with non-standard ids should not crash the grouper.
+    const items = [{ id: 'app-not-a-guid' }];
+    const groups = groupTestItemsByApp(items as any);
+    assert.ok(groups.has(''));
+    assert.strictEqual(groups.get('')!.length, 1);
   });
 });
