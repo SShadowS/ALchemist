@@ -53,6 +53,10 @@ export class AlchemistOutputChannel {
     }
   }
 
+  appendLine(message: string): void {
+    this.channel.appendLine(message);
+  }
+
   show(): void {
     this.channel.show(true);
   }

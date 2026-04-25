@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { EXCLUDED_DIR_NAMES } from '../workspace/workspaceModel';
 
 export interface DiscoveredTest {
   name: string;
@@ -13,7 +14,13 @@ export interface DiscoveredTestCodeunit {
   tests: DiscoveredTest[];
 }
 
-const CODEUNIT_REGEX = /codeunit\s+(\d+)\s+"([^"]+)"/i;
+// Accept both quoted identifiers ("Test Foo") and bare identifiers (TestFoo).
+// Bare identifiers are AL identifier tokens: first char letter/underscore, rest word chars.
+// AL reserved words (procedure, begin, end, ...) are NOT excluded — the AL
+// compiler is authoritative. Discovery operates on potentially broken files;
+// extracting "procedure" as a codeunit name from `codeunit 50100 procedure`
+// is acceptable since AL.Runner will surface the real syntax error.
+const CODEUNIT_REGEX = /codeunit\s+(\d+)\s+(?:"([^"]+)"|([A-Za-z_]\w*))/i;
 const TEST_ATTR_REGEX = /^\s*\[Test\]\s*$/i;
 const PROCEDURE_REGEX = /^\s*(?:local\s+)?procedure\s+(\w+)\s*\(/i;
 
@@ -41,7 +48,7 @@ export function discoverTestsFromContent(content: string, fileName: string): Dis
         });
       }
       currentCodeunitId = parseInt(codeunitMatch[1], 10);
-      currentCodeunitName = codeunitMatch[2];
+      currentCodeunitName = codeunitMatch[2] ?? codeunitMatch[3];
       currentTests = [];
       continue;
     }
@@ -73,32 +80,39 @@ export function discoverTestsFromContent(content: string, fileName: string): Dis
   return codeunits;
 }
 
-export async function discoverTestsInWorkspace(workspacePath: string): Promise<DiscoveredTestCodeunit[]> {
+export function discoverTestsInWorkspaceSync(workspacePath: string): DiscoveredTestCodeunit[] {
   const allCodeunits: DiscoveredTestCodeunit[] = [];
-
-  const alFiles = await findAlFiles(workspacePath);
+  const alFiles = findAlFilesSync(workspacePath);
   for (const filePath of alFiles) {
     const content = fs.readFileSync(filePath, 'utf-8');
     const relativePath = path.relative(workspacePath, filePath);
     const discovered = discoverTestsFromContent(content, relativePath);
     allCodeunits.push(...discovered);
   }
-
   return allCodeunits;
 }
 
-async function findAlFiles(dir: string): Promise<string[]> {
-  const results: string[] = [];
+// Keep async wrapper for backward compat with existing callers.
+export async function discoverTestsInWorkspace(workspacePath: string): Promise<DiscoveredTestCodeunit[]> {
+  return discoverTestsInWorkspaceSync(workspacePath);
+}
 
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
+function findAlFilesSync(dir: string): string[] {
+  const results: string[] = [];
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return results;
+  }
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== 'node_modules' && entry.name !== '.alpackages') {
-      results.push(...await findAlFiles(fullPath));
+    if (entry.isDirectory() && !EXCLUDED_DIR_NAMES.has(entry.name)) {
+      results.push(...findAlFilesSync(fullPath));
     } else if (entry.isFile() && entry.name.endsWith('.al')) {
       results.push(fullPath);
     }
   }
-
   return results;
 }
+

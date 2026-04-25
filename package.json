@@ -209,7 +209,7 @@
             "off"
           ],
           "default": "current",
-          "description": "Which tests to run on save."
+          "description": "Which tests to run on save. 'current' = tests in the saved file's app plus apps transitively depending on it. 'all' = every test in every AL app in the workspace. 'off' = no save-triggered runs."
         },
         "alchemist.showOutputOnError": {
           "type": "string",
@@ -261,6 +261,11 @@
           "enum": ["minimal", "values", "rich"],
           "default": "rich",
           "description": "Detail level for iteration hover: minimal (nav only), values (nav + variables), rich (nav + variables + messages)."
+        },
+        "alchemist.scratchProjectAppId": {
+          "type": "string",
+          "default": "",
+          "description": "GUID (app.json 'id') of the AL app to use as context for project-aware scratch files. Leave empty to be prompted."
         }
       }
     }

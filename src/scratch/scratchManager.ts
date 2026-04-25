@@ -1,6 +1,43 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { AlApp } from '../workspace/types';
+
+export type ScratchAppResolution =
+  | { mode: 'standalone' }
+  | { mode: 'app'; app: AlApp }
+  | { mode: 'needsPrompt'; choices: AlApp[] };
+
+/**
+ * Decide which AL app context to use for a project-aware scratch file.
+ *
+ * Priority:
+ *   1. `settingAppId` (user's `alchemist.scratchProjectAppId` setting) if it
+ *      matches an app in `apps`.
+ *   2. `persistedAppId` (stored in ext global state keyed by scratch file
+ *      path) if it matches an app in `apps`.
+ *   3. With 0 apps: standalone. With 1 app: that app. With N: prompt.
+ */
+export function resolveScratchProjectApp(
+  apps: AlApp[],
+  settingAppId: string | undefined,
+  persistedAppId: string | undefined,
+): ScratchAppResolution {
+  if (apps.length === 0) return { mode: 'standalone' };
+
+  if (settingAppId) {
+    const match = apps.find(a => a.id === settingAppId);
+    if (match) return { mode: 'app', app: match };
+  }
+
+  if (persistedAppId) {
+    const match = apps.find(a => a.id === persistedAppId);
+    if (match) return { mode: 'app', app: match };
+  }
+
+  if (apps.length === 1) return { mode: 'app', app: apps[0] };
+  return { mode: 'needsPrompt', choices: apps };
+}
 
 const SCRATCH_DIR_NAME = 'alchemist-scratch';
 const PROJECT_DIRECTIVE_REGEX = /^\/\/\s*alchemist:\s*project/i;
