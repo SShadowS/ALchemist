@@ -43,3 +43,46 @@ suite('TestController — buildTestTree (pure)', () => {
     assert.deepStrictEqual(tree, []);
   });
 });
+
+suite('TestController — multi-app id uniqueness', () => {
+  test('compound ids differ for same-named procs across two apps', async () => {
+    const os = require('os');
+    const fsp = require('fs');
+    const tmp = fsp.mkdtempSync(path.join(os.tmpdir(), 'alchemist-collision-test-'));
+    try {
+      // App A with codeunit containing test "Setup"
+      fsp.mkdirSync(path.join(tmp, 'AppA/src'), { recursive: true });
+      fsp.writeFileSync(path.join(tmp, 'AppA/app.json'),
+        JSON.stringify({ id: 'aaa', name: 'AppA', publisher: 'p', version: '1.0.0.0' }));
+      fsp.writeFileSync(path.join(tmp, 'AppA/src/T.al'),
+        'codeunit 50000 ATest\n{\n  Subtype = Test;\n  [Test]\n  procedure Setup()\n  begin\n  end;\n}');
+
+      // App B with codeunit containing test "Setup" too
+      fsp.mkdirSync(path.join(tmp, 'AppB/src'), { recursive: true });
+      fsp.writeFileSync(path.join(tmp, 'AppB/app.json'),
+        JSON.stringify({ id: 'bbb', name: 'AppB', publisher: 'p', version: '1.0.0.0' }));
+      fsp.writeFileSync(path.join(tmp, 'AppB/src/T.al'),
+        'codeunit 50100 BTest\n{\n  Subtype = Test;\n  [Test]\n  procedure Setup()\n  begin\n  end;\n}');
+
+      const model = new WorkspaceModel([tmp]);
+      await model.scan();
+
+      const tree = buildTestTree(model);
+      assert.strictEqual(tree.length, 2);
+
+      // For each app's tree, build the compound id the same way refreshTestsFromModel does.
+      const ids: string[] = [];
+      for (const node of tree) {
+        for (const cu of node.codeunits) {
+          for (const t of cu.tests) {
+            ids.push(`test-${node.app.id}-${cu.codeunitId}-${t.name}`);
+          }
+        }
+      }
+      assert.strictEqual(ids.length, 2, 'two test items expected');
+      assert.notStrictEqual(ids[0], ids[1], 'compound ids must differ even when bare names collide');
+    } finally {
+      fsp.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});

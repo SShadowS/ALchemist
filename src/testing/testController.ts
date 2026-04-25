@@ -26,6 +26,7 @@ export function buildTestTree(model: WorkspaceModel): TestTreeAppNode[] {
 export class AlchemistTestController {
   private readonly controller: vscode.TestController;
   private readonly testItems = new Map<string, vscode.TestItem>();
+  private readonly testItemsById = new Map<string, vscode.TestItem>();
 
   constructor(private readonly executor: Executor) {
     this.controller = vscode.tests.createTestController('alchemist', 'ALchemist');
@@ -118,6 +119,7 @@ export class AlchemistTestController {
     const tree = buildTestTree(model);
     this.controller.items.replace([]);
     this.testItems.clear();
+    this.testItemsById.clear();
     for (const node of tree) {
       const appItem = this.controller.createTestItem(
         `app-${node.app.id}`,
@@ -138,7 +140,12 @@ export class AlchemistTestController {
           );
           testItem.range = new vscode.Range(test.line, 0, test.line, 0);
           codeunitItem.children.add(testItem);
+          // Maintain two indices:
+          // - testItems (bare name): used by legacy updateFromResult; will be removed
+          //   once execution paths carry app context (Task 10+).
+          // - testItemsById (compound id): canonical key, no cross-app collision.
           this.testItems.set(test.name, testItem);
+          this.testItemsById.set(`test-${node.app.id}-${codeunit.codeunitId}-${test.name}`, testItem);
         }
         appItem.children.add(codeunitItem);
       }
