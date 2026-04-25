@@ -15,6 +15,10 @@ export interface DiscoveredTestCodeunit {
 
 // Accept both quoted identifiers ("Test Foo") and bare identifiers (TestFoo).
 // Bare identifiers are AL identifier tokens: first char letter/underscore, rest word chars.
+// AL reserved words (procedure, begin, end, ...) are NOT excluded — the AL
+// compiler is authoritative. Discovery operates on potentially broken files;
+// extracting "procedure" as a codeunit name from `codeunit 50100 procedure`
+// is acceptable since AL.Runner will surface the real syntax error.
 const CODEUNIT_REGEX = /codeunit\s+(\d+)\s+(?:"([^"]+)"|([A-Za-z_]\w*))/i;
 const TEST_ATTR_REGEX = /^\s*\[Test\]\s*$/i;
 const PROCEDURE_REGEX = /^\s*(?:local\s+)?procedure\s+(\w+)\s*\(/i;
