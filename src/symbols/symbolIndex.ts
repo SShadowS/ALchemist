@@ -25,7 +25,11 @@ export class SymbolIndex {
   private readonly emitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.emitter.event;
 
-  async initialize(model: WorkspaceModel, parseCache: ParseCache): Promise<void> {
+  async initialize(
+    model: WorkspaceModel,
+    parseCache: ParseCache,
+    onProgress?: (current: number, total: number) => void,
+  ): Promise<void> {
     this.model = model;
     this.parseCache = parseCache;
     if (!parseCache.isAvailable()) {
@@ -50,14 +54,25 @@ export class SymbolIndex {
       }
     }
 
+    const totalFiles = allFiles.length;
+    let processed = 0;
+
     // Pass 1: parse + declarations only
     for (const file of allFiles) {
       await this.parseFileDeclarations(file);
+      processed++;
+      if (onProgress && processed % 32 === 0) {
+        onProgress(processed, totalFiles);
+      }
     }
 
     // Pass 2: resolve references now that all declarers are known
     for (const file of allFiles) {
       this.resolveFileReferences(file);
+    }
+
+    if (onProgress) {
+      onProgress(totalFiles, totalFiles);
     }
 
     this.ready = true;

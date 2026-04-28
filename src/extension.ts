@@ -117,7 +117,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       symbolIndex = new SymbolIndex();
-      await symbolIndex.initialize(workspaceModel, parseCache!);
+      statusBar.setTier('regex', 'indexing 0/0');
+      await symbolIndex.initialize(workspaceModel, parseCache!, (current, total) => {
+        statusBar.setTier('regex', `indexing ${current}/${total}`);
+      });
       if (symbolIndex.isReady()) {
         testRouter = new TreeSitterTestRouter(symbolIndex);
         symbolWatcherBinding = bindSymbolIndexToVsCode(symbolIndex, vscode);
