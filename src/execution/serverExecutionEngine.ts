@@ -17,6 +17,8 @@ export class ServerExecutionEngine implements ExecutionEngine {
       sourcePaths: req.sourcePaths,
       captureValues: req.captureValues ?? true,
     };
+    if (req.iterationTracking) { payload.iterationTracking = true; }
+    if (req.coverage) { payload.coverage = true; }
     return this.execute(payload, startTime, 'test');
   }
 
@@ -28,6 +30,7 @@ export class ServerExecutionEngine implements ExecutionEngine {
     };
     if (req.inlineCode !== undefined) { payload.code = req.inlineCode; }
     if (req.sourcePaths !== undefined) { payload.sourcePaths = req.sourcePaths; }
+    if (req.iterationTracking) { payload.iterationTracking = true; }
     return this.execute(payload, startTime, 'scratch');
   }
 

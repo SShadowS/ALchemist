@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { discoverTestsInWorkspace, discoverTestsInWorkspaceSync, DiscoveredTestCodeunit } from './testDiscovery';
-import { Executor } from '../runner/executor';
+import { ExecutionEngine } from '../execution/executionEngine';
 import { ExecutionResult } from '../runner/outputParser';
 import { WorkspaceModel } from '../workspace/workspaceModel';
 import { AlApp } from '../workspace/types';
@@ -53,7 +53,7 @@ export class AlchemistTestController {
   private readonly testItemsById = new Map<string, vscode.TestItem>();
 
   constructor(
-    private readonly executor: Executor,
+    private readonly getEngine: () => ExecutionEngine | undefined,
     private readonly model?: WorkspaceModel,
   ) {
     this.controller = vscode.tests.createTestController('alchemist', 'ALchemist');
@@ -123,8 +123,12 @@ export class AlchemistTestController {
     run.end();
   }
 
-  private async runTests(request: vscode.TestRunRequest, token: vscode.CancellationToken): Promise<void> {
-    token.onCancellationRequested(() => this.executor.cancel());
+  private async runTests(request: vscode.TestRunRequest, _token: vscode.CancellationToken): Promise<void> {
+    const engine = this.getEngine();
+    if (!engine) {
+      vscode.window.showErrorMessage('ALchemist: AL.Runner not yet ready');
+      return;
+    }
 
     if (!this.model) {
       // Legacy mode: fall back to single-folder behavior pre-Task-12 wiring.
@@ -132,10 +136,10 @@ export class AlchemistTestController {
       if (!wsf) { return; }
       if (request.include && request.include.length > 0) {
         for (const item of request.include) {
-          await this.executor.execute('test', wsf.uri.fsPath, wsf.uri.fsPath, item.label);
+          await engine.runTests({ sourcePaths: [wsf.uri.fsPath], captureValues: true, iterationTracking: true, coverage: true });
         }
       } else {
-        await this.executor.execute('test', wsf.uri.fsPath, wsf.uri.fsPath);
+        await engine.runTests({ sourcePaths: [wsf.uri.fsPath], captureValues: true, iterationTracking: true, coverage: true });
       }
       return;
     }
@@ -144,25 +148,19 @@ export class AlchemistTestController {
     if (request.include && request.include.length > 0) {
       const groups = groupTestItemsByApp(request.include);
       const apps = this.model.getApps();
-      for (const [appId, items] of groups) {
+      for (const [appId, _items] of groups) {
         const app = apps.find(a => a.id === appId);
         if (!app) { continue; }
-        // Routing semantics: only `test-` items pass --run <procName> to AL.Runner.
-        // `app-*` and `codeunit-*` items fall through with procedureName=undefined,
-        // which runs every test in that app. AL.Runner does not yet expose a
-        // codeunit-scope flag; widening to app-level is the closest available
-        // behavior for codeunit selections.
-        for (const item of items) {
-          const procedureName = item.id.startsWith('test-') ? (item as vscode.TestItem).label : undefined;
-          const depPaths = this.model!.getDependencies(app.id).map(a => a.path);
-          await this.executor.execute('test', app.path, app.path, procedureName, depPaths);
-        }
+        const depPaths = this.model!.getDependencies(app.id).map(a => a.path);
+        const sourcePaths = depPaths.length > 0 ? depPaths : [app.path];
+        await engine.runTests({ sourcePaths, captureValues: true, iterationTracking: true, coverage: true });
       }
     } else {
       // Run All: iterate every app.
       for (const app of this.model.getApps()) {
         const depPaths = this.model.getDependencies(app.id).map(a => a.path);
-        await this.executor.execute('test', app.path, app.path, undefined, depPaths);
+        const sourcePaths = depPaths.length > 0 ? depPaths : [app.path];
+        await engine.runTests({ sourcePaths, captureValues: true, iterationTracking: true, coverage: true });
       }
     }
   }

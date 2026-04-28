@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { AlRunnerManager } from './runner/alRunnerManager';
-import { Executor } from './runner/executor';
+import { ServerProcess } from './execution/serverProcess';
+import { ServerExecutionEngine } from './execution/serverExecutionEngine';
+import { ExecutionEngine } from './execution/executionEngine';
 import { DecorationManager } from './editor/decorations';
 import { CoverageHoverProvider } from './editor/hoverProvider';
 import { AlchemistOutputChannel } from './output/outputChannel';
@@ -16,7 +18,9 @@ import { WorkspaceModel, bindWorkspaceModelToVsCode, FILE_WATCH_DEBOUNCE_MS } fr
 import { planSaveRuns } from './testing/saveRouting';
 
 let runnerManager: AlRunnerManager;
-let executor: Executor;
+let serverProcess: ServerProcess | undefined;
+let executionEngine: ExecutionEngine | undefined;
+let executionEngineReady: Promise<void> = Promise.resolve();
 let decorationManager: DecorationManager;
 let outputChannel: AlchemistOutputChannel;
 let statusBar: StatusBarManager;
@@ -30,13 +34,25 @@ let modelBinding: { dispose(): void } | undefined;
 let treeRefreshTimer: NodeJS.Timeout | undefined;
 let modelChangeUnsub: (() => void) | undefined;
 
+/**
+ * Await engine readiness then invoke fn. Shows an error and returns undefined
+ * when the engine is not available (runner failed to install).
+ */
+async function withEngine<T>(fn: (engine: ExecutionEngine) => Promise<T>): Promise<T | undefined> {
+  await executionEngineReady;
+  if (!executionEngine) {
+    vscode.window.showErrorMessage('ALchemist: AL.Runner not available');
+    return undefined;
+  }
+  return fn(executionEngine);
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   console.log('ALchemist: activating...');
 
   try {
     // Initialize runtime infra first
     runnerManager = new AlRunnerManager();
-    executor = new Executor(runnerManager);
     decorationManager = new DecorationManager(context.extensionPath);
     outputChannel = new AlchemistOutputChannel();
     statusBar = new StatusBarManager();
@@ -50,17 +66,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await workspaceModel.scan();
     modelBinding = bindWorkspaceModelToVsCode(workspaceModel, vscode);
 
-    testController = new AlchemistTestController(executor, workspaceModel);
+    // testController uses a lazy getter so it can be constructed before the engine is ready
+    testController = new AlchemistTestController(() => executionEngine, workspaceModel);
   } catch (err: any) {
     console.error('ALchemist: failed to initialize components:', err);
     vscode.window.showErrorMessage(`ALchemist failed to initialize: ${err.message}`);
     return;
   }
 
-  // Ensure AL.Runner is available (non-blocking — don't delay command registration)
-  runnerManager.ensureInstalled().catch(() => {
-    // Will show error when user tries to run
-  });
+  // Ensure AL.Runner is available (non-blocking — don't delay command registration).
+  // Chain ServerProcess + engine construction once the runner path is known.
+  executionEngineReady = runnerManager.ensureInstalled()
+    .then((runnerPath) => {
+      serverProcess = new ServerProcess({ runnerPath });
+      executionEngine = new ServerExecutionEngine(serverProcess);
+    })
+    .catch((err) => {
+      console.error('ALchemist: failed to ensure AL.Runner:', err);
+      // Will show error when user tries to run via withEngine()
+    });
 
   // Check for updates (non-blocking)
   runnerManager.checkForUpdates();
@@ -73,67 +97,48 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     void testController.refreshTestsFromModel(workspaceModel);
   });
 
-  // --- Event handlers ---
+  // --- Result handler (shared between on-save and runNow) ---
 
-  // Executor events
-  context.subscriptions.push(
-    executor.onStart((mode) => {
-      statusBar.setRunning(mode);
-    }),
-    executor.onFinish((result) => {
-      statusBar.setResult(result);
+  function handleResult(result: import('./runner/outputParser').ExecutionResult): void {
+    statusBar.setResult(result);
 
-      // Get the active editor's file name for the output channel
-      const activeFile = vscode.window.activeTextEditor?.document.fileName || 'unknown';
-      outputChannel.displayResult(result, path.basename(activeFile));
+    const activeFile = vscode.window.activeTextEditor?.document.fileName || 'unknown';
+    outputChannel.displayResult(result, path.basename(activeFile));
 
-      // Always capture last result regardless of editor state
-      lastExecutionResult = result;
+    lastExecutionResult = result;
 
-      // Apply decorations to active editor
-      const editor = vscode.window.activeTextEditor;
-      if (editor) {
-        const wsPath = workspaceModel.getAppContaining(editor.document.uri.fsPath)?.path ?? path.dirname(editor.document.uri.fsPath);
-        decorationManager.applyResults(editor, result, wsPath);
+    const editor = vscode.window.activeTextEditor;
+    if (editor) {
+      const wsPath = workspaceModel.getAppContaining(editor.document.uri.fsPath)?.path ?? path.dirname(editor.document.uri.fsPath);
+      decorationManager.applyResults(editor, result, wsPath);
+    }
+
+    testController.updateFromResult(result);
+
+    if (result.iterations && result.iterations.length > 0) {
+      const editorFile = vscode.window.activeTextEditor?.document.uri.fsPath;
+      const wsPath = (editorFile && workspaceModel.getAppContaining(editorFile)?.path) ?? '';
+      iterationStore.load(result.iterations, wsPath);
+      vscode.commands.executeCommand('setContext', 'alchemist.hasIterationData', true);
+      const loops = iterationStore.getLoops().filter(l => l.iterationCount >= 2);
+      if (loops.length > 0) {
+        statusBar.showIterationStepper(0, loops[0].iterationCount);
       }
+    } else if (result.exitCode === 0) {
+      iterationStore.clear();
+      vscode.commands.executeCommand('setContext', 'alchemist.hasIterationData', false);
+      statusBar.hideIterationStepper();
+    }
+  }
 
-      // Update Test Explorer
-      testController.updateFromResult(result);
+  // --- On-save handler ---
 
-      // Load iteration data — only update on successful runs, don't let
-      // failed runs (e.g. test controller auto-run with missing deps) clear good data
-      if (result.iterations && result.iterations.length > 0) {
-        const editorFile = vscode.window.activeTextEditor?.document.uri.fsPath;
-        const wsPath = (editorFile && workspaceModel.getAppContaining(editorFile)?.path) ?? '';
-        iterationStore.load(result.iterations, wsPath);
-        vscode.commands.executeCommand('setContext', 'alchemist.hasIterationData', true);
-        const loops = iterationStore.getLoops().filter(l => l.iterationCount >= 2);
-        if (loops.length > 0) {
-          statusBar.showIterationStepper(0, loops[0].iterationCount);
-        }
-      } else if (result.exitCode === 0) {
-        iterationStore.clear();
-        vscode.commands.executeCommand('setContext', 'alchemist.hasIterationData', false);
-        statusBar.hideIterationStepper();
-      }
-    })
-  );
-
-  // On-save handler
   context.subscriptions.push(
     vscode.workspace.onDidSaveTextDocument(async (doc) => {
       if (doc.languageId !== 'al') return;
 
       const config = vscode.workspace.getConfiguration('alchemist');
       if (!config.get<boolean>('runOnSave', true)) return;
-
-      if (!runnerManager.getPath()) {
-        try {
-          await runnerManager.ensureInstalled();
-        } catch {
-          return;
-        }
-      }
 
       const filePath = doc.uri.fsPath;
 
@@ -150,9 +155,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           );
 
           if (resolution.mode === 'standalone') {
-            await executor.execute('scratch-standalone', filePath);
+            statusBar.setRunning('scratch-standalone');
+            const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [filePath], captureValues: true, iterationTracking: true }));
+            if (result) handleResult(result);
           } else if (resolution.mode === 'app') {
-            await executor.execute('scratch-project', filePath, resolution.app.path);
+            statusBar.setRunning('scratch-project');
+            const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [resolution.app.path, filePath], captureValues: true, iterationTracking: true }));
+            if (result) handleResult(result);
           } else {
             // needsPrompt
             const pick = await vscode.window.showQuickPick(
@@ -161,10 +170,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             );
             if (!pick) return;
             await context.globalState.update(`alchemist.scratchApp.${filePath}`, pick.appId);
-            await executor.execute('scratch-project', filePath, pick.appPath);
+            statusBar.setRunning('scratch-project');
+            const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [pick.appPath, filePath], captureValues: true, iterationTracking: true }));
+            if (result) handleResult(result);
           }
         } else {
-          await executor.execute('scratch-standalone', filePath);
+          statusBar.setRunning('scratch-standalone');
+          const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [filePath], captureValues: true, iterationTracking: true }));
+          if (result) handleResult(result);
         }
       } else {
         // Multi-app test routing
@@ -172,7 +185,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const plan = planSaveRuns(filePath, workspaceModel, scope);
         for (const run of plan) {
           const depPaths = workspaceModel.getDependencies(run.appId).map(a => a.path);
-          await executor.execute('test', filePath, run.appPath, undefined, depPaths);
+          const sourcePaths = depPaths.length > 0 ? depPaths : [run.appPath];
+          statusBar.setRunning('test');
+          const result = await withEngine(eng => eng.runTests({ sourcePaths, captureValues: true, iterationTracking: true, coverage: true }));
+          if (result) handleResult(result);
         }
       }
     })
@@ -217,14 +233,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
 
-      if (!runnerManager.getPath()) {
-        try {
-          await runnerManager.ensureInstalled();
-        } catch {
-          return;
-        }
-      }
-
       const filePath = editor.document.uri.fsPath;
 
       if (isScratchFile(filePath)) {
@@ -240,9 +248,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           );
 
           if (resolution.mode === 'standalone') {
-            await executor.execute('scratch-standalone', filePath);
+            statusBar.setRunning('scratch-standalone');
+            const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [filePath], captureValues: true, iterationTracking: true }));
+            if (result) handleResult(result);
           } else if (resolution.mode === 'app') {
-            await executor.execute('scratch-project', filePath, resolution.app.path);
+            statusBar.setRunning('scratch-project');
+            const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [resolution.app.path, filePath], captureValues: true, iterationTracking: true }));
+            if (result) handleResult(result);
           } else {
             // needsPrompt
             const pick = await vscode.window.showQuickPick(
@@ -251,21 +263,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             );
             if (!pick) return;
             await context.globalState.update(`alchemist.scratchApp.${filePath}`, pick.appId);
-            await executor.execute('scratch-project', filePath, pick.appPath);
+            statusBar.setRunning('scratch-project');
+            const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [pick.appPath, filePath], captureValues: true, iterationTracking: true }));
+            if (result) handleResult(result);
           }
         } else {
-          await executor.execute('scratch-standalone', filePath);
+          statusBar.setRunning('scratch-standalone');
+          const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [filePath], captureValues: true, iterationTracking: true }));
+          if (result) handleResult(result);
         }
       } else {
         const owningApp = workspaceModel.getAppContaining(filePath);
         if (owningApp) {
           const depPaths = workspaceModel.getDependencies(owningApp.id).map(a => a.path);
-          await executor.execute('test', filePath, owningApp.path, undefined, depPaths);
+          const sourcePaths = depPaths.length > 0 ? depPaths : [owningApp.path];
+          statusBar.setRunning('test');
+          const result = await withEngine(eng => eng.runTests({ sourcePaths, captureValues: true, iterationTracking: true, coverage: true }));
+          if (result) handleResult(result);
         }
       }
     }),
-    vscode.commands.registerCommand('alchemist.stopRun', () => {
-      executor.cancel();
+    vscode.commands.registerCommand('alchemist.stopRun', async () => {
+      await executionEngine?.dispose();
+      // Rebuild engine after stop so future runs work
+      if (serverProcess) {
+        serverProcess = new ServerProcess({ runnerPath: runnerManager.getPath()! });
+        executionEngine = new ServerExecutionEngine(serverProcess);
+      }
       statusBar.setIdle();
     }),
     vscode.commands.registerCommand('alchemist.clearDecorations', () => {
@@ -361,7 +385,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Push all disposables
   context.subscriptions.push(
-    executor,
     decorationManager,
     outputChannel,
     statusBar,
@@ -370,11 +393,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 }
 
-export function deactivate(): void {
+export async function deactivate(): Promise<void> {
   modelBinding?.dispose();
   if (treeRefreshTimer) {
     clearTimeout(treeRefreshTimer);
     treeRefreshTimer = undefined;
   }
   modelChangeUnsub?.();
+  await executionEngine?.dispose();
 }

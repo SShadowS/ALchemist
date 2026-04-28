@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ExecutionResult } from '../runner/outputParser';
-import { ExecutionMode } from '../runner/executor';
+
+export type RunMode = 'test' | 'scratch-standalone' | 'scratch-project';
 
 export class StatusBarManager {
   private readonly item: vscode.StatusBarItem;
@@ -19,7 +20,7 @@ export class StatusBarManager {
     this.item.tooltip = 'ALchemist \u2014 Ready';
   }
 
-  setRunning(mode: ExecutionMode): void {
+  setRunning(mode: RunMode): void {
     this.item.text = '$(loading~spin) ALchemist';
     this.item.color = undefined;
     this.item.backgroundColor = undefined;
