@@ -5,12 +5,17 @@ export type RunMode = 'test' | 'scratch-standalone' | 'scratch-project';
 
 export class StatusBarManager {
   private readonly item: vscode.StatusBarItem;
+  private tierItem: vscode.StatusBarItem;
 
   constructor() {
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
     this.item.command = 'alchemist.showOutput';
     this.setIdle();
     this.item.show();
+
+    this.tierItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
+    this.tierItem.show();
+    this.setTier('regex');
   }
 
   setIdle(): void {
@@ -68,6 +73,19 @@ export class StatusBarManager {
     this.item.tooltip = `ALchemist \u2014 Scratch (${result.durationMs}ms)`;
   }
 
+  setTier(tier: 'regex' | 'precision' | 'fallback', scopeText?: string, tooltip?: string): void {
+    if (tier === 'regex') {
+      this.tierItem.text = '$(symbol-misc) regex';
+      this.tierItem.tooltip = scopeText ? `ALchemist: ${scopeText}` : 'ALchemist: tree-sitter unavailable, using regex discovery';
+    } else if (tier === 'precision') {
+      this.tierItem.text = `$(check) ${scopeText ?? 'precision'}`;
+      this.tierItem.tooltip = tooltip ?? 'ALchemist: precision tier — tests narrowed via tree-sitter symbol index';
+    } else {
+      this.tierItem.text = scopeText ? `$(circle-slash) ${scopeText}` : '$(circle-slash) fallback';
+      this.tierItem.tooltip = `ALchemist: fallback tier${tooltip ? ' — ' + tooltip : ''}`;
+    }
+  }
+
   // --- Iteration stepper ---
 
   private prevItem?: vscode.StatusBarItem;
@@ -114,6 +132,7 @@ export class StatusBarManager {
 
   dispose(): void {
     this.item.dispose();
+    this.tierItem.dispose();
     this.prevItem?.dispose();
     this.counterItem?.dispose();
     this.nextItem?.dispose();

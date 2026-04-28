@@ -113,6 +113,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await parseCache!.initialize();
       if (!parseCache!.isAvailable()) {
         outputChannel.appendLine('ALchemist: tree-sitter WASM unavailable; staying on regex tier');
+        statusBar.setTier('regex');
         return;
       }
       symbolIndex = new SymbolIndex();
@@ -120,6 +121,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (symbolIndex.isReady()) {
         testRouter = new TreeSitterTestRouter(symbolIndex);
         symbolWatcherBinding = bindSymbolIndexToVsCode(symbolIndex, vscode);
+        statusBar.setTier('precision');
       }
     })();
 
@@ -241,11 +243,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const scope = config.get<'current' | 'all' | 'off'>('testRunOnSave', 'current');
         const savePlan = routeSave(filePath, scope, workspaceModel, testRouter);
 
-        // Log tier to outputChannel (Task 12 will add proper setTier API to status bar)
         if (savePlan.tier === 'precision') {
-          outputChannel.appendLine(`ALchemist: precision tier — ${savePlan.affectedTests.length} tests / ${savePlan.apps.length} apps`);
+          statusBar.setTier('precision', `${savePlan.affectedTests.length} tests / ${savePlan.apps.length} apps`);
         } else if (savePlan.reason) {
-          outputChannel.appendLine(`ALchemist: fallback tier — ${savePlan.reason}`);
+          statusBar.setTier('fallback', undefined, savePlan.reason);
         }
 
         for (const app of savePlan.apps) {
