@@ -258,7 +258,11 @@
         },
         "alchemist.iterationHoverDetail": {
           "type": "string",
-          "enum": ["minimal", "values", "rich"],
+          "enum": [
+            "minimal",
+            "values",
+            "rich"
+          ],
           "default": "rich",
           "description": "Detail level for iteration hover: minimal (nav only), values (nav + variables), rich (nav + variables + messages)."
         },
@@ -280,7 +284,9 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "fast-xml-parser": "^5.5.11"
+    "@sshadows/tree-sitter-al": "^2.5.0",
+    "fast-xml-parser": "^5.5.11",
+    "web-tree-sitter": "^0.26.8"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
