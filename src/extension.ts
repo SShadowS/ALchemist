@@ -20,6 +20,39 @@ import { ParseCache } from './symbols/parseCache';
 import { SymbolIndex, bindSymbolIndexToVsCode } from './symbols/symbolIndex';
 import { TestRouter } from './routing/testRouter';
 import { TreeSitterTestRouter } from './routing/treeSitterTestRouter';
+import { TestProcedure } from './symbols/types';
+import { AlApp } from './workspace/types';
+
+export interface SaveRoutingPlan {
+  tier: 'precision' | 'fallback';
+  reason?: string;
+  apps: AlApp[];
+  affectedTests: TestProcedure[];
+}
+
+export function routeSave(
+  filePath: string,
+  scope: 'current' | 'all' | 'off',
+  workspaceModelLocal: WorkspaceModel,
+  router: TestRouter | undefined,
+): SaveRoutingPlan {
+  if (scope === 'off') return { tier: 'fallback', apps: [], affectedTests: [] };
+  if (scope === 'all') return { tier: 'fallback', apps: workspaceModelLocal.getApps(), affectedTests: [] };
+
+  // scope === 'current'
+  const owning = workspaceModelLocal.getAppContaining(filePath);
+  if (!owning) return { tier: 'fallback', apps: [], affectedTests: [], reason: 'file outside any AL app' };
+
+  if (router && router.isAvailable()) {
+    const result = router.getTestsAffectedBy(filePath, owning);
+    if (result.confident) {
+      const apps = workspaceModelLocal.getDependents(owning.id);
+      return { tier: 'precision', apps, affectedTests: result.tests };
+    }
+    return { tier: 'fallback', apps: workspaceModelLocal.getDependents(owning.id), affectedTests: [], reason: result.reason };
+  }
+  return { tier: 'fallback', apps: workspaceModelLocal.getDependents(owning.id), affectedTests: [], reason: 'router not ready' };
+}
 
 let runnerManager: AlRunnerManager;
 let serverProcess: ServerProcess | undefined;
@@ -204,15 +237,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           if (result) handleResult(result);
         }
       } else {
-        // Multi-app test routing
+        // Multi-app test routing — precision or fallback tier via routeSave
         const scope = config.get<'current' | 'all' | 'off'>('testRunOnSave', 'current');
-        const plan = planSaveRuns(filePath, workspaceModel, scope);
-        for (const run of plan) {
-          const depPaths = workspaceModel.getDependencies(run.appId).map(a => a.path);
-          const sourcePaths = depPaths.length > 0 ? depPaths : [run.appPath];
+        const savePlan = routeSave(filePath, scope, workspaceModel, testRouter);
+
+        // Log tier to outputChannel (Task 12 will add proper setTier API to status bar)
+        if (savePlan.tier === 'precision') {
+          outputChannel.appendLine(`ALchemist: precision tier — ${savePlan.affectedTests.length} tests / ${savePlan.apps.length} apps`);
+        } else if (savePlan.reason) {
+          outputChannel.appendLine(`ALchemist: fallback tier — ${savePlan.reason}`);
+        }
+
+        for (const app of savePlan.apps) {
+          const depPaths = workspaceModel.getDependencies(app.id).map(a => a.path);
           statusBar.setRunning('test');
-          const result = await withEngine(eng => eng.runTests({ sourcePaths, captureValues: true, iterationTracking: true, coverage: true }));
-          if (result) handleResult(result);
+          await withEngine(async (engine) => {
+            const result = await engine.runTests({
+              sourcePaths: depPaths,
+              captureValues: true,
+              iterationTracking: true,
+              coverage: true,
+            });
+            handleResult(result);
+          });
         }
       }
     })
