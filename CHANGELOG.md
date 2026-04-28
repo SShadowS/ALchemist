@@ -1,23 +1,34 @@
 # Changelog
 
-## [Unreleased]
+## 0.4.0 (2026-04-25)
 
 ### Features
 
-- **Multi-app workspace support** — ALchemist now discovers AL apps (folders with `app.json`) across every workspace folder, not just the first. Works correctly on `.code-workspace` multi-root setups.
+- **Multi-app workspace support** — ALchemist discovers AL apps (folders with `app.json`) across every workspace folder, not just the first. Works correctly on `.code-workspace` multi-root setups.
 - **Test Explorer grouped by app** — Tests appear as App → Codeunit → Procedure. Multiple apps with same-named codeunits no longer collide.
 - **Dependency-aware save routing** — Saving a file in a main app runs tests in every app that transitively depends on it (via `app.json` `dependencies`). Save in a test app runs only that app's tests.
 - **Scratch-project multi-app selection** — Project-aware scratch files (`//alchemist: project`) in multi-app workspaces prompt for an AL app context on first use; choice persists per scratch file. Explicit override via `alchemist.scratchProjectAppId` setting.
+- **Precision-tier test routing** — Tree-sitter-al-backed cross-file symbol/reference index narrows save-triggered test runs to apps containing affected tests. Status bar shows current tier (regex / precision / fallback) and scope.
+- **AL.Runner --server execution** — All AL.Runner invocations now go through a long-lived JSON-RPC daemon with per-file rewrite cache + syntax-tree cache. Warm test runs significantly faster than cold one-shot spawns.
+- **Confidence-aware fallback** — When the symbol index cannot safely answer (parse errors in saved file, or files awaiting reparse), routing drops to broad-scope fallback automatically. Status bar tooltip surfaces the reason.
+- **`Ctrl+Shift+A Shift+R` — Run Wider Scope** — Forces fallback-tier runs for the active file regardless of router confidence.
+- **Indexing progress** — Status bar shows `regex (indexing N/M)` during initial workspace scan.
 
 ### Fixes
 
-- **Codeunit regex accepts unquoted names** — Discovery previously failed on `codeunit 50000 Name` (bare identifier); now accepts both quoted and unquoted forms. Unblocks real-world repos like BusinessCentral.Sentinel.
-- **Fallback retry gated on AL compile error** — `executor.ts` previously retried every non-zero exit. Now retries only on exit code 3 (AL compile error) with AL.Runner 1.0.12+, or exit 1 with zero tests captured (legacy compatibility). Assertion failures and runner limitations no longer trigger spurious single-file retries.
+- **Codeunit regex accepts unquoted names** — Discovery previously failed on `codeunit 50000 Name` (bare identifier); now accepts both quoted and unquoted forms.
+- **Combined `[Test, HandlerFunctions(...)]` attributes detected** — Tree-sitter grammar handles every AL attribute form by construction.
+- **Fallback retry gated on AL compile error** — `executor.ts` previously retried every non-zero exit. Now retries only on exit code 3 with AL.Runner 1.0.12+, or exit 1 with zero tests captured (legacy compatibility).
 - **Removed `workspaceFolders[0]` assumption** — Every call site that implicitly assumed a single workspace folder now resolves the owning AL app via `WorkspaceModel`.
+- **One-shot AL.Runner spawns eliminated** — Legacy `Executor` class deleted; `ExecutionEngine` + `ServerProcess` fully supersede it.
+
+### Architecture
+
+- 5-layer precision stack (`ParseCache` → `SymbolExtractor` → `SymbolIndex` → `TestRouter` → `ExecutionEngine`) with strict unidirectional dependencies. L4 and L5 are interfaces — when AL.Runner ships native partial-execution, only L4's implementation needs to swap.
 
 ### Requires
 
-- AL.Runner **1.0.12+** for differentiated exit codes and HTTP type compile fix. Older runners still work but fall back to legacy exit-code handling.
+- AL.Runner **1.0.12+** — required for `--server` mode and differentiated exit codes.
 
 ## 0.3.0 (2026-04-17)
 
