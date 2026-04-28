@@ -137,6 +137,30 @@ codeunit 50001 Bar {
     assert.ok((all.get(testApp.id)!).length >= 1);
     index.dispose();
   });
+
+  test('initial scan with file containing parse errors does not permanently unsettle isSettled', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'alch-init-err-'));
+    try {
+      fs.mkdirSync(path.join(tmp, 'A', 'src'), { recursive: true });
+      fs.writeFileSync(path.join(tmp, 'A', 'app.json'), JSON.stringify({
+        id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0',
+      }));
+      // One good file
+      fs.writeFileSync(path.join(tmp, 'A', 'src', 'Good.al'), 'codeunit 50000 Good { }');
+      // One file with a syntax error
+      fs.writeFileSync(path.join(tmp, 'A', 'src', 'Bad.al'), 'codeunit 50001 Bad { unfinished');
+      const model = new WorkspaceModel([tmp]);
+      await model.scan();
+      const index = new SymbolIndex();
+      await index.initialize(model, cache);
+      // settled should be true — parse errors at init don't leave the index unsettled
+      assert.strictEqual(index.isSettled(), true,
+        'initial scan with parse errors must NOT leave isSettled() false permanently');
+      index.dispose();
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 suite('SymbolIndex — incremental + watcher', () => {

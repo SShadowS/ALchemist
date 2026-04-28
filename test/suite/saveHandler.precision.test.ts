@@ -70,4 +70,31 @@ suite('routeSave', () => {
     assert.strictEqual(plan.tier, 'fallback');
     assert.strictEqual(plan.reason, 'router not ready');
   });
+
+  test('precision tier narrows apps when affected tests only live in subset of dependents', async () => {
+    const model = new WorkspaceModel([path.join(FIX, 'multi-app')]);
+    await model.scan();
+    const router = new FakeRouter({
+      confident: true,
+      tests: [{ codeunitId: 50100, codeunitName: 'SomeTestCodeunit', procName: 'ComputeDoubles', line: 0 }],
+    });
+    const file = path.join(FIX, 'multi-app/MainApp/src/SomeCodeunit.Codeunit.al');
+    // Lookup that maps the test to MainApp.Test (id from fixture: 22222222...)
+    const lookup = (_t: any) => '22222222-2222-2222-2222-222222222222';
+    const plan = routeSave(file, 'current', model, router, lookup);
+    assert.strictEqual(plan.tier, 'precision');
+    // Should narrow from [MainApp, MainApp.Test] to just [MainApp.Test]
+    assert.strictEqual(plan.apps.length, 1);
+    assert.strictEqual(plan.apps[0].name, 'MainApp.Test');
+  });
+
+  test('precision tier without lookup falls back to all dependents (backward compat)', async () => {
+    const model = new WorkspaceModel([path.join(FIX, 'multi-app')]);
+    await model.scan();
+    const router = new FakeRouter({ confident: true, tests: [] });
+    const file = path.join(FIX, 'multi-app/MainApp/src/SomeCodeunit.Codeunit.al');
+    const plan = routeSave(file, 'current', model, router); // no lookup
+    assert.strictEqual(plan.tier, 'precision');
+    assert.strictEqual(plan.apps.length, 2); // all dependents (MainApp + MainApp.Test)
+  });
 });

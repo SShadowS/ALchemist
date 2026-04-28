@@ -76,6 +76,14 @@ export class SymbolIndex {
     }
 
     this.ready = true;
+    // Initial-scan parse errors are not "pending reparse" — those files are
+    // represented by their last-good edges (or empty if never parsed clean).
+    // Clear pendingFiles so isSettled() doesn't permanently report false on
+    // a workspace where any file has stale syntax errors at startup.
+    // The per-saved-file confidence gate in getTestsAffectedBy still checks
+    // pendingFiles.has(savedFile) — that is set by refreshFile() during edits,
+    // not by initial scan.
+    this.pendingFiles.clear();
     this.settled = true;
     this.emitter.fire();
   }
@@ -232,6 +240,25 @@ export class SymbolIndex {
       }
     }
     return affected;
+  }
+
+  /**
+   * Return the AlApp.id that owns a given test (looked up via fileToAppId
+   * and reverse-walking from TestProcedure → declaring file).
+   * Used by precision-tier app-narrowing in routeSave.
+   */
+  getAppIdForTest(test: TestProcedure): string | undefined {
+    // Find the file declaring this test by scanning fileSymbols.
+    for (const [file, syms] of this.fileSymbols) {
+      if (syms.tests.some(t =>
+        t.codeunitId === test.codeunitId &&
+        t.codeunitName === test.codeunitName &&
+        t.procName === test.procName
+      )) {
+        return this.fileToAppId.get(file);
+      }
+    }
+    return undefined;
   }
 
   dispose(): void {

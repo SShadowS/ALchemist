@@ -35,6 +35,7 @@ export function routeSave(
   scope: 'current' | 'all' | 'off',
   workspaceModelLocal: WorkspaceModel,
   router: TestRouter | undefined,
+  appIdForTest?: (t: TestProcedure) => string | undefined,
 ): SaveRoutingPlan {
   if (scope === 'off') return { tier: 'fallback', apps: [], affectedTests: [] };
   if (scope === 'all') return { tier: 'fallback', apps: workspaceModelLocal.getApps(), affectedTests: [] };
@@ -46,7 +47,15 @@ export function routeSave(
   if (router && router.isAvailable()) {
     const result = router.getTestsAffectedBy(filePath, owning);
     if (result.confident) {
-      const apps = workspaceModelLocal.getDependents(owning.id);
+      let apps = workspaceModelLocal.getDependents(owning.id);
+      if (appIdForTest) {
+        const affectedAppIds = new Set<string>();
+        for (const t of result.tests) {
+          const id = appIdForTest(t);
+          if (id) affectedAppIds.add(id);
+        }
+        apps = apps.filter(a => affectedAppIds.has(a.id));
+      }
       return { tier: 'precision', apps, affectedTests: result.tests };
     }
     return { tier: 'fallback', apps: workspaceModelLocal.getDependents(owning.id), affectedTests: [], reason: result.reason };
@@ -244,7 +253,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       } else {
         // Multi-app test routing — precision or fallback tier via routeSave
         const scope = config.get<'current' | 'all' | 'off'>('testRunOnSave', 'current');
-        const savePlan = routeSave(filePath, scope, workspaceModel, testRouter);
+        const savePlan = routeSave(
+          filePath,
+          scope,
+          workspaceModel,
+          testRouter,
+          symbolIndex ? (t) => symbolIndex!.getAppIdForTest(t) : undefined,
+        );
 
         if (savePlan.tier === 'precision') {
           statusBar.setTier('precision', `${savePlan.affectedTests.length} tests / ${savePlan.apps.length} apps`);
@@ -361,10 +376,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('alchemist.stopRun', async () => {
       await executionEngine?.dispose();
       // Rebuild engine after stop so future runs work
-      if (serverProcess) {
-        serverProcess = new ServerProcess({ runnerPath: runnerManager.getPath()! });
-        executionEngine = new ServerExecutionEngine(serverProcess);
+      const rp = runnerManager.getPath();
+      if (!rp) {
+        vscode.window.showInformationMessage('ALchemist: AL.Runner not yet installed');
+        return;
       }
+      serverProcess = new ServerProcess({ runnerPath: rp });
+      executionEngine = new ServerExecutionEngine(serverProcess);
       statusBar.setIdle();
     }),
     vscode.commands.registerCommand('alchemist.clearDecorations', () => {
