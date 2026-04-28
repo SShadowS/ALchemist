@@ -137,6 +137,10 @@
       {
         "command": "alchemist.iterationTable",
         "title": "ALchemist: Open Iteration Table"
+      },
+      {
+        "command": "alchemist.runWiderScope",
+        "title": "ALchemist: Run Wider Scope (Force Fallback)"
       }
     ],
     "keybindings": [
@@ -181,6 +185,11 @@
         "command": "alchemist.iterationTable",
         "key": "ctrl+shift+a t",
         "when": "alchemist.hasIterationData"
+      },
+      {
+        "command": "alchemist.runWiderScope",
+        "key": "ctrl+shift+a shift+r",
+        "when": "editorTextFocus && editorLangId == al"
       }
     ],
     "configuration": {

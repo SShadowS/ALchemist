@@ -373,6 +373,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('alchemist.showOutput', () => {
       outputChannel.show();
+    }),
+    vscode.commands.registerCommand('alchemist.runWiderScope', async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || editor.document.languageId !== 'al') {
+        vscode.window.showInformationMessage('ALchemist: open an .al file first');
+        return;
+      }
+      const filePath = editor.document.uri.fsPath;
+      const owningApp = workspaceModel.getAppContaining(filePath);
+      if (!owningApp) {
+        vscode.window.showInformationMessage('ALchemist: file is not inside a known AL app');
+        return;
+      }
+      const apps = workspaceModel.getDependents(owningApp.id);
+      statusBar.setTier('fallback', `wider scope (${apps.length} apps)`, 'forced wider scope via Ctrl+Shift+A Shift+R');
+      for (const app of apps) {
+        const depPaths = workspaceModel.getDependencies(app.id).map(a => a.path);
+        statusBar.setRunning('test');
+        await withEngine(async (engine) => {
+          const result = await engine.runTests({
+            sourcePaths: depPaths,
+            captureValues: true,
+            iterationTracking: true,
+            coverage: true,
+          });
+          handleResult(result);
+        });
+      }
     })
   );
 
