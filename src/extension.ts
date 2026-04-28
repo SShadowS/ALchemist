@@ -171,7 +171,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const scope = config.get<'current' | 'all' | 'off'>('testRunOnSave', 'current');
         const plan = planSaveRuns(filePath, workspaceModel, scope);
         for (const run of plan) {
-          await executor.execute('test', filePath, run.appPath);
+          const depPaths = workspaceModel.getDependencies(run.appId).map(a => a.path);
+          await executor.execute('test', filePath, run.appPath, undefined, depPaths);
         }
       }
     })
@@ -258,7 +259,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       } else {
         const owningApp = workspaceModel.getAppContaining(filePath);
         if (owningApp) {
-          await executor.execute('test', filePath, owningApp.path);
+          const depPaths = workspaceModel.getDependencies(owningApp.id).map(a => a.path);
+          await executor.execute('test', filePath, owningApp.path, undefined, depPaths);
         }
       }
     }),

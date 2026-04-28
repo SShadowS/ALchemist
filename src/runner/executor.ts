@@ -7,7 +7,13 @@ import { parseJsonOutput, parseCoberturaXml, ExecutionResult } from './outputPar
 
 export type ExecutionMode = 'scratch-standalone' | 'scratch-project' | 'test';
 
-export function buildRunnerArgs(mode: ExecutionMode, filePath: string, workspacePath?: string, procedureName?: string): { args: string[]; cwd: string } {
+export function buildRunnerArgs(
+  mode: ExecutionMode,
+  filePath: string,
+  workspacePath?: string,
+  procedureName?: string,
+  additionalPaths?: string[],
+): { args: string[]; cwd: string } {
   switch (mode) {
     case 'scratch-standalone':
       return {
@@ -22,12 +28,16 @@ export function buildRunnerArgs(mode: ExecutionMode, filePath: string, workspace
       };
     }
     case 'test': {
-      const cwd = workspacePath || path.dirname(filePath);
-      const args = ['--output-json', '--capture-values', '--iteration-tracking', '--coverage', cwd];
+      const primary = workspacePath || path.dirname(filePath);
+      const allPaths = [primary, ...(additionalPaths ?? [])];
+      // Dedupe in case caller already included primary.
+      const uniquePaths = [...new Set(allPaths)];
+      const args = ['--output-json', '--capture-values', '--iteration-tracking', '--coverage'];
       if (procedureName) {
-        args.splice(args.length - 1, 0, '--run', procedureName);
+        args.push('--run', procedureName);
       }
-      return { args, cwd };
+      args.push(...uniquePaths);
+      return { args, cwd: primary };
     }
   }
 }
@@ -54,7 +64,13 @@ export class Executor {
 
   constructor(private readonly runnerManager: AlRunnerManager) {}
 
-  async execute(mode: ExecutionMode, filePath: string, workspacePath?: string, procedureName?: string): Promise<void> {
+  async execute(
+    mode: ExecutionMode,
+    filePath: string,
+    workspacePath?: string,
+    procedureName?: string,
+    additionalPaths?: string[],
+  ): Promise<void> {
     const runnerPath = this.runnerManager.getPath();
     if (!runnerPath) {
       vscode.window.showErrorMessage('AL.Runner not found. Run "ALchemist: Run Now" to trigger installation.');
@@ -66,7 +82,7 @@ export class Executor {
     this.onDidStartRun.fire(mode);
 
     const startTime = Date.now();
-    const { args, cwd } = this.buildArgs(mode, filePath, workspacePath, procedureName);
+    const { args, cwd } = this.buildArgs(mode, filePath, workspacePath, procedureName, additionalPaths);
 
     const result = await this.runAndParse(runnerPath, args, cwd, mode, startTime);
 
@@ -141,8 +157,8 @@ export class Executor {
     }
   }
 
-  private buildArgs(mode: ExecutionMode, filePath: string, workspacePath?: string, procedureName?: string): { args: string[]; cwd: string } {
-    return buildRunnerArgs(mode, filePath, workspacePath, procedureName);
+  private buildArgs(mode: ExecutionMode, filePath: string, workspacePath?: string, procedureName?: string, additionalPaths?: string[]): { args: string[]; cwd: string } {
+    return buildRunnerArgs(mode, filePath, workspacePath, procedureName, additionalPaths);
   }
 
   private spawn(command: string, args: string[], cwd: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {

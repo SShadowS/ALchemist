@@ -133,6 +133,45 @@ export class WorkspaceModel {
   }
 
   /**
+   * Return `appId`'s own app plus all apps it transitively depends on
+   * (forward closure). Used to compute the AL.Runner source-path set:
+   * AL.Runner needs the test app plus every app it imports symbols from
+   * to resolve cross-app references during transpile.
+   *
+   * Returns [] if appId matches no known app.
+   */
+  getDependencies(appId: string): AlApp[] {
+    const root = this.appsById.get(appId);
+    if (!root) return [];
+
+    // Reuse the cycle warning gate from getDependents.
+    if (this.cycleDetected === null) {
+      this.cycleDetected = hasCycle(this.apps);
+      if (this.cycleDetected) {
+        this.warn('ALchemist: dependency cycle detected in app.json graph; results may be incomplete.');
+      }
+    }
+
+    const visited = new Set<string>();
+    const result: AlApp[] = [];
+    const appsById = this.appsById;
+
+    function dfs(id: string): void {
+      if (visited.has(id)) return;
+      visited.add(id);
+      const app = appsById.get(id);
+      if (!app) return;
+      result.push(app);
+      for (const dep of app.dependencies) {
+        dfs(dep.id);
+      }
+    }
+
+    dfs(appId);
+    return result;
+  }
+
+  /**
    * Return the AlApp whose path is the longest prefix of `filePath`. If
    * filePath is outside every app, returns undefined.
    */

@@ -346,6 +346,88 @@ suite('WorkspaceModel — watcher + onDidChange', () => {
   });
 });
 
+suite('WorkspaceModel — forward deps', () => {
+  const fsp = require('fs');
+  const os = require('os');
+  let tmp: string;
+  let model: WorkspaceModel;
+
+  function writeApp(folder: string, app: any) {
+    fsp.mkdirSync(path.join(tmp, folder), { recursive: true });
+    fsp.writeFileSync(path.join(tmp, folder, 'app.json'), JSON.stringify(app));
+  }
+
+  setup(() => {
+    tmp = fsp.mkdtempSync(path.join(os.tmpdir(), 'alchemist-fwd-test-'));
+  });
+  teardown(() => {
+    fsp.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test('getDependencies: leaf returns just self', async () => {
+    writeApp('A', { id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' });
+    model = new WorkspaceModel([tmp]);
+    await model.scan();
+    const names = model.getDependencies('a').map(a => a.name).sort();
+    assert.deepStrictEqual(names, ['A']);
+  });
+
+  test('getDependencies: B depends on A → returns [B, A]', async () => {
+    writeApp('A', { id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' });
+    writeApp('B', { id: 'b', name: 'B', publisher: 'p', version: '1.0.0.0',
+      dependencies: [{ id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' }] });
+    model = new WorkspaceModel([tmp]);
+    await model.scan();
+    const names = model.getDependencies('b').map(a => a.name).sort();
+    assert.deepStrictEqual(names, ['A', 'B']);
+  });
+
+  test('getDependencies: transitive C→B→A → returns [C, B, A]', async () => {
+    writeApp('A', { id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' });
+    writeApp('B', { id: 'b', name: 'B', publisher: 'p', version: '1.0.0.0',
+      dependencies: [{ id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' }] });
+    writeApp('C', { id: 'c', name: 'C', publisher: 'p', version: '1.0.0.0',
+      dependencies: [{ id: 'b', name: 'B', publisher: 'p', version: '1.0.0.0' }] });
+    model = new WorkspaceModel([tmp]);
+    await model.scan();
+    const names = model.getDependencies('c').map(a => a.name).sort();
+    assert.deepStrictEqual(names, ['A', 'B', 'C']);
+  });
+
+  test('getDependencies: diamond (D→B→A, D→C→A) — A appears once', async () => {
+    writeApp('A', { id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' });
+    writeApp('B', { id: 'b', name: 'B', publisher: 'p', version: '1.0.0.0',
+      dependencies: [{ id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' }] });
+    writeApp('C', { id: 'c', name: 'C', publisher: 'p', version: '1.0.0.0',
+      dependencies: [{ id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' }] });
+    writeApp('D', { id: 'd', name: 'D', publisher: 'p', version: '1.0.0.0',
+      dependencies: [
+        { id: 'b', name: 'B', publisher: 'p', version: '1.0.0.0' },
+        { id: 'c', name: 'C', publisher: 'p', version: '1.0.0.0' },
+      ] });
+    model = new WorkspaceModel([tmp]);
+    await model.scan();
+    const names = model.getDependencies('d').map(a => a.name).sort();
+    assert.deepStrictEqual(names, ['A', 'B', 'C', 'D']);
+  });
+
+  test('getDependencies: missing dep id is skipped (not in workspace)', async () => {
+    writeApp('A', { id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0',
+      dependencies: [{ id: 'external-not-in-ws', name: 'X', publisher: 'p', version: '1.0.0.0' }] });
+    model = new WorkspaceModel([tmp]);
+    await model.scan();
+    const names = model.getDependencies('a').map(a => a.name).sort();
+    assert.deepStrictEqual(names, ['A'], 'external dep silently skipped — local source-path resolution only');
+  });
+
+  test('getDependencies: unknown appId returns []', async () => {
+    writeApp('A', { id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0' });
+    model = new WorkspaceModel([tmp]);
+    await model.scan();
+    assert.deepStrictEqual(model.getDependencies('nonexistent'), []);
+  });
+});
+
 suite('bindWorkspaceModelToVsCode', () => {
   let clock: sinon.SinonFakeTimers;
   setup(() => { clock = sinon.useFakeTimers(); });

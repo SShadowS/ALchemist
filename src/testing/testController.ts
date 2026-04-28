@@ -154,13 +154,15 @@ export class AlchemistTestController {
         // behavior for codeunit selections.
         for (const item of items) {
           const procedureName = item.id.startsWith('test-') ? (item as vscode.TestItem).label : undefined;
-          await this.executor.execute('test', app.path, app.path, procedureName);
+          const depPaths = this.model!.getDependencies(app.id).map(a => a.path);
+          await this.executor.execute('test', app.path, app.path, procedureName, depPaths);
         }
       }
     } else {
       // Run All: iterate every app.
       for (const app of this.model.getApps()) {
-        await this.executor.execute('test', app.path, app.path);
+        const depPaths = this.model.getDependencies(app.id).map(a => a.path);
+        await this.executor.execute('test', app.path, app.path, undefined, depPaths);
       }
     }
   }

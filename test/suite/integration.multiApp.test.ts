@@ -4,6 +4,7 @@ import { WorkspaceModel } from '../../src/workspace/workspaceModel';
 import { buildTestTree } from '../../src/testing/testController';
 import { planSaveRuns } from '../../src/testing/saveRouting';
 import { resolveScratchProjectApp } from '../../src/scratch/scratchManager';
+import { buildRunnerArgs } from '../../src/runner/executor';
 
 const FIX = path.resolve(__dirname, '../../../test/fixtures');
 
@@ -148,5 +149,28 @@ suite('Integration — multi-app fixture end-to-end', () => {
     await emptyModel.scan();
     const empty = resolveScratchProjectApp(emptyModel.getApps(), undefined, undefined);
     assert.strictEqual(empty.mode, 'standalone');
+  });
+});
+
+suite('Integration — runner args include forward dependencies', () => {
+  test('test mode passes test app + main app paths', async () => {
+    const model = new WorkspaceModel([path.join(FIX, 'multi-app')]);
+    await model.scan();
+
+    const testApp = model.getApps().find(a => a.name === 'MainApp.Test')!;
+    const depPaths = model.getDependencies(testApp.id).map(a => a.path);
+
+    const { args } = buildRunnerArgs(
+      'test',
+      path.join(testApp.path, 'src/SomeTest.Codeunit.al'),
+      testApp.path,
+      undefined,
+      depPaths,
+    );
+
+    // Both app source folders should appear in args
+    const mainAppPath = model.getApps().find(a => a.name === 'MainApp')!.path;
+    assert.ok(args.includes(testApp.path), 'test app path included');
+    assert.ok(args.includes(mainAppPath), 'main app path included as forward dep');
   });
 });

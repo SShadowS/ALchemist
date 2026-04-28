@@ -33,10 +33,10 @@ suite('Executor', () => {
       const { args } = buildRunnerArgs('test', '/workspace/test.al', '/workspace', 'TestCalcDiscount');
       assert.ok(args.includes('--run'));
       assert.ok(args.includes('TestCalcDiscount'));
-      // --run should come before the cwd path
+      // --run should come before the positional paths
       const runIdx = args.indexOf('--run');
       const cwdIdx = args.lastIndexOf('/workspace');
-      assert.ok(runIdx < cwdIdx, '--run should come before cwd path');
+      assert.ok(runIdx < cwdIdx, '--run should come before positional path(s)');
     });
 
     test('test mode without procedureName does not include --run', () => {
@@ -67,6 +67,32 @@ suite('Executor', () => {
     test('test mode includes --iteration-tracking', () => {
       const { args } = buildRunnerArgs('test', '/workspace/test.al', '/workspace');
       assert.ok(args.includes('--iteration-tracking'));
+    });
+
+    test('test mode with additionalPaths: includes all paths positionally', () => {
+      const { args } = buildRunnerArgs('test', '/ws/test/T.al', '/ws/test', undefined, ['/ws/main']);
+      // Last two args should be the path list
+      const lastArgs = args.slice(-2);
+      assert.deepStrictEqual(lastArgs.sort(), ['/ws/main', '/ws/test']);
+    });
+
+    test('test mode with additionalPaths: dedupes if primary in additionalPaths', () => {
+      const { args } = buildRunnerArgs('test', '/ws/test/T.al', '/ws/test', undefined, ['/ws/test', '/ws/main']);
+      const pathArgs = args.filter(a => a.startsWith('/ws/'));
+      assert.strictEqual(pathArgs.length, 2, 'duplicate /ws/test removed');
+      assert.ok(pathArgs.includes('/ws/test'));
+      assert.ok(pathArgs.includes('/ws/main'));
+    });
+
+    test('test mode with --run + additionalPaths: --run before paths', () => {
+      const { args } = buildRunnerArgs('test', '/ws/test/T.al', '/ws/test', 'MyProc', ['/ws/main']);
+      const runIdx = args.indexOf('--run');
+      assert.ok(runIdx >= 0);
+      assert.strictEqual(args[runIdx + 1], 'MyProc');
+      // After --run MyProc come the paths
+      const remaining = args.slice(runIdx + 2);
+      assert.ok(remaining.includes('/ws/main'));
+      assert.ok(remaining.includes('/ws/test'));
     });
   });
 });
