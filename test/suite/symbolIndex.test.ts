@@ -138,3 +138,167 @@ codeunit 50001 Bar {
     index.dispose();
   });
 });
+
+suite('SymbolIndex — incremental + watcher', () => {
+  let cache: ParseCache;
+  suiteSetup(async () => {
+    cache = new ParseCache(WASM_DIR);
+    await cache.initialize();
+  });
+  suiteTeardown(() => cache.dispose());
+
+  test('refreshFile updates referrers when a new ref is added', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'alch-idx-'));
+    try {
+      fs.mkdirSync(path.join(tmp, 'A', 'src'), { recursive: true });
+      fs.writeFileSync(path.join(tmp, 'A', 'app.json'), JSON.stringify({
+        id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0',
+      }));
+      fs.writeFileSync(path.join(tmp, 'A', 'src', 'Foo.al'), 'codeunit 50000 Foo { }');
+      const barPath = path.join(tmp, 'A', 'src', 'Bar.al');
+      fs.writeFileSync(barPath, 'codeunit 50001 Bar { }');
+      const model = new WorkspaceModel([tmp]);
+      await model.scan();
+      const index = new SymbolIndex();
+      await index.initialize(model, cache);
+      assert.strictEqual(index.getReferencers('Foo').size, 0);
+      fs.writeFileSync(barPath, `
+codeunit 50001 Bar {
+  procedure Run() var x: Codeunit Foo; begin end;
+}`);
+      await index.refreshFile(barPath);
+      assert.strictEqual(index.getReferencers('Foo').size, 1);
+      index.dispose();
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('removeFile clears its declared and referrer edges', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'alch-idx-'));
+    try {
+      fs.mkdirSync(path.join(tmp, 'A', 'src'), { recursive: true });
+      fs.writeFileSync(path.join(tmp, 'A', 'app.json'), JSON.stringify({
+        id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0',
+      }));
+      const fooPath = path.join(tmp, 'A', 'src', 'Foo.al');
+      fs.writeFileSync(fooPath, 'codeunit 50000 Foo { }');
+      const model = new WorkspaceModel([tmp]);
+      await model.scan();
+      const index = new SymbolIndex();
+      await index.initialize(model, cache);
+      assert.ok(index.getDeclarer('Foo'));
+      index.removeFile(fooPath);
+      assert.strictEqual(index.getDeclarer('Foo'), undefined);
+      index.dispose();
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('refreshFile with parse error retains last-good and marks pending', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'alch-idx-'));
+    try {
+      fs.mkdirSync(path.join(tmp, 'A', 'src'), { recursive: true });
+      fs.writeFileSync(path.join(tmp, 'A', 'app.json'), JSON.stringify({
+        id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0',
+      }));
+      const fooPath = path.join(tmp, 'A', 'src', 'Foo.al');
+      fs.writeFileSync(fooPath, 'codeunit 50000 Foo { }');
+      const model = new WorkspaceModel([tmp]);
+      await model.scan();
+      const index = new SymbolIndex();
+      await index.initialize(model, cache);
+      assert.strictEqual(index.isSettled(), true);
+      fs.writeFileSync(fooPath, 'codeunit 50000 Foo {');
+      await index.refreshFile(fooPath);
+      assert.ok(index.getDeclarer('Foo'), 'declarer retained from last-good');
+      assert.strictEqual(index.isSettled(), false);
+      fs.writeFileSync(fooPath, 'codeunit 50000 Foo { }');
+      await index.refreshFile(fooPath);
+      assert.strictEqual(index.isSettled(), true);
+      index.dispose();
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+suite('SymbolIndex — getTestsAffectedBy', () => {
+  let cache: ParseCache;
+  suiteSetup(async () => {
+    cache = new ParseCache(WASM_DIR);
+    await cache.initialize();
+  });
+  suiteTeardown(() => cache.dispose());
+
+  test('saving file with declared symbol returns tests in other files referencing it', async () => {
+    const model = new WorkspaceModel([path.join(FIX, 'multi-app')]);
+    await model.scan();
+    const index = new SymbolIndex();
+    await index.initialize(model, cache);
+    const mainFile = path.join(FIX, 'multi-app/MainApp/src/SomeCodeunit.Codeunit.al');
+    const affected = index.getTestsAffectedBy(mainFile);
+    assert.ok(affected, 'expected non-null');
+    assert.ok(affected!.some(t => t.procName === 'ComputeDoubles'));
+    index.dispose();
+  });
+
+  test('saving test file returns its own tests', async () => {
+    const model = new WorkspaceModel([path.join(FIX, 'multi-app')]);
+    await model.scan();
+    const index = new SymbolIndex();
+    await index.initialize(model, cache);
+    const testFile = path.join(FIX, 'multi-app/MainApp.Test/src/SomeTest.Codeunit.al');
+    const affected = index.getTestsAffectedBy(testFile);
+    assert.ok(affected);
+    assert.ok(affected!.some(t => t.procName === 'ComputeDoubles'));
+    index.dispose();
+  });
+
+  test('returns null when saved file has parse errors', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'alch-idx-'));
+    try {
+      fs.mkdirSync(path.join(tmp, 'A', 'src'), { recursive: true });
+      fs.writeFileSync(path.join(tmp, 'A', 'app.json'), JSON.stringify({
+        id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0',
+      }));
+      const fooPath = path.join(tmp, 'A', 'src', 'Foo.al');
+      fs.writeFileSync(fooPath, 'codeunit 50000 Foo { }');
+      const model = new WorkspaceModel([tmp]);
+      await model.scan();
+      const index = new SymbolIndex();
+      await index.initialize(model, cache);
+      fs.writeFileSync(fooPath, 'codeunit 50000 Foo {');
+      await index.refreshFile(fooPath);
+      assert.strictEqual(index.getTestsAffectedBy(fooPath), null);
+      index.dispose();
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('returns null when index not settled (file other than saved is pending)', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'alch-idx-'));
+    try {
+      fs.mkdirSync(path.join(tmp, 'A', 'src'), { recursive: true });
+      fs.writeFileSync(path.join(tmp, 'A', 'app.json'), JSON.stringify({
+        id: 'a', name: 'A', publisher: 'p', version: '1.0.0.0',
+      }));
+      const fooPath = path.join(tmp, 'A', 'src', 'Foo.al');
+      const barPath = path.join(tmp, 'A', 'src', 'Bar.al');
+      fs.writeFileSync(fooPath, 'codeunit 50000 Foo { }');
+      fs.writeFileSync(barPath, 'codeunit 50001 Bar { }');
+      const model = new WorkspaceModel([tmp]);
+      await model.scan();
+      const index = new SymbolIndex();
+      await index.initialize(model, cache);
+      fs.writeFileSync(barPath, 'codeunit 50001 Bar {');
+      await index.refreshFile(barPath);
+      assert.strictEqual(index.getTestsAffectedBy(fooPath), null);
+      index.dispose();
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});

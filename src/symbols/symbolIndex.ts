@@ -181,6 +181,44 @@ export class SymbolIndex {
     }
   }
 
+  /**
+   * Returns tests affected by editing `filePath`:
+   *   union of (a) tests declared in filePath
+   *           (b) tests in OTHER files that reference any symbol declared in filePath.
+   * Returns null when low-confidence:
+   *   - filePath has parse errors (in pendingFiles), or
+   *   - index not settled (any file pending).
+   */
+  getTestsAffectedBy(filePath: string): TestProcedure[] | null {
+    if (!this.ready) return null;
+    if (this.pendingFiles.has(filePath)) return null;
+    if (!this.isSettled()) return null;
+
+    const own = this.fileSymbols.get(filePath);
+    if (!own) return [];
+
+    const affected: TestProcedure[] = [...own.tests];
+    const seen = new Set<string>();
+    for (const t of own.tests) seen.add(`${filePath}|${t.procName}`);
+
+    for (const decl of own.declared) {
+      const referrers = this.referrers.get(decl.fqName);
+      if (!referrers) continue;
+      for (const refFile of referrers) {
+        if (refFile === filePath) continue;
+        const refSyms = this.fileSymbols.get(refFile);
+        if (!refSyms) continue;
+        for (const t of refSyms.tests) {
+          const key = `${refFile}|${t.procName}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          affected.push(t);
+        }
+      }
+    }
+    return affected;
+  }
+
   dispose(): void {
     this.fileSymbols.clear();
     this.declarers.clear();
@@ -190,6 +228,46 @@ export class SymbolIndex {
     this.emitter.dispose();
     this.ready = false;
   }
+}
+
+const FILE_WATCH_DEBOUNCE_MS = 100;
+
+/**
+ * Wire SymbolIndex to VS Code FileSystemWatcher events on **\/*.al.
+ * Debounces 100ms trailing per file. Returns disposable.
+ */
+export function bindSymbolIndexToVsCode(
+  index: SymbolIndex,
+  vscodeApi: typeof vscode,
+): { dispose(): void } {
+  const watcher = vscodeApi.workspace.createFileSystemWatcher('**/*.al');
+  const timers = new Map<string, NodeJS.Timeout>();
+
+  function schedule(uri: vscode.Uri, action: 'refresh' | 'remove') {
+    const file = uri.fsPath;
+    const old = timers.get(file);
+    if (old) clearTimeout(old);
+    timers.set(file, setTimeout(() => {
+      timers.delete(file);
+      if (action === 'remove') index.removeFile(file);
+      else void index.refreshFile(file);
+    }, FILE_WATCH_DEBOUNCE_MS));
+  }
+
+  const subs = [
+    watcher.onDidCreate((u) => schedule(u, 'refresh')),
+    watcher.onDidChange((u) => schedule(u, 'refresh')),
+    watcher.onDidDelete((u) => schedule(u, 'remove')),
+  ];
+
+  return {
+    dispose() {
+      for (const t of timers.values()) clearTimeout(t);
+      timers.clear();
+      for (const s of subs) s.dispose();
+      watcher.dispose();
+    },
+  };
 }
 
 function findAlFiles(dir: string): string[] {
