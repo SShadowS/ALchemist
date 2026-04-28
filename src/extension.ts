@@ -16,6 +16,10 @@ import { registerIterationCommands, findLoopAtCursor } from './iteration/iterati
 import { IterationTablePanel } from './iteration/iterationTablePanel';
 import { WorkspaceModel, bindWorkspaceModelToVsCode, FILE_WATCH_DEBOUNCE_MS } from './workspace/workspaceModel';
 import { planSaveRuns } from './testing/saveRouting';
+import { ParseCache } from './symbols/parseCache';
+import { SymbolIndex, bindSymbolIndexToVsCode } from './symbols/symbolIndex';
+import { TestRouter } from './routing/testRouter';
+import { TreeSitterTestRouter } from './routing/treeSitterTestRouter';
 
 let runnerManager: AlRunnerManager;
 let serverProcess: ServerProcess | undefined;
@@ -33,6 +37,10 @@ let workspaceModel: WorkspaceModel;
 let modelBinding: { dispose(): void } | undefined;
 let treeRefreshTimer: NodeJS.Timeout | undefined;
 let modelChangeUnsub: (() => void) | undefined;
+let parseCache: ParseCache | undefined;
+let symbolIndex: SymbolIndex | undefined;
+let testRouter: TestRouter | undefined;
+let symbolWatcherBinding: { dispose(): void } | undefined;
 
 /**
  * Await engine readiness then invoke fn. Shows an error and returns undefined
@@ -65,6 +73,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     workspaceModel = new WorkspaceModel(folderPaths, msg => outputChannel.appendLine(msg));
     await workspaceModel.scan();
     modelBinding = bindWorkspaceModelToVsCode(workspaceModel, vscode);
+
+    // L1-L4: tree-sitter precision stack (async, non-blocking)
+    parseCache = new ParseCache(path.join(context.extensionPath, 'dist'));
+    void (async () => {
+      await parseCache!.initialize();
+      if (!parseCache!.isAvailable()) {
+        outputChannel.appendLine('ALchemist: tree-sitter WASM unavailable; staying on regex tier');
+        return;
+      }
+      symbolIndex = new SymbolIndex();
+      await symbolIndex.initialize(workspaceModel, parseCache!);
+      if (symbolIndex.isReady()) {
+        testRouter = new TreeSitterTestRouter(symbolIndex);
+        symbolWatcherBinding = bindSymbolIndexToVsCode(symbolIndex, vscode);
+      }
+    })();
 
     // testController uses a lazy getter so it can be constructed before the engine is ready
     testController = new AlchemistTestController(() => executionEngine, workspaceModel);
@@ -395,10 +419,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 export async function deactivate(): Promise<void> {
   modelBinding?.dispose();
+  symbolWatcherBinding?.dispose();
   if (treeRefreshTimer) {
     clearTimeout(treeRefreshTimer);
     treeRefreshTimer = undefined;
   }
   modelChangeUnsub?.();
+  testRouter?.dispose();
+  symbolIndex?.dispose();
+  parseCache?.dispose();
   await executionEngine?.dispose();
 }
