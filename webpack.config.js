@@ -7,7 +7,7 @@ const { execSync } = require('child_process');
 class CopyWasmPlugin {
   apply(compiler) {
     compiler.hooks.afterEmit.tap('CopyWasmPlugin', () => {
-      execSync('node scripts/copy-wasm.js', { stdio: 'inherit' });
+      execSync('node scripts/copy-wasm.js', { stdio: 'inherit', cwd: path.resolve(__dirname) });
     });
   }
 }
