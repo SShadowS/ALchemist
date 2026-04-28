@@ -302,3 +302,34 @@ suite('SymbolIndex — getTestsAffectedBy', () => {
     }
   });
 });
+
+suite('SymbolIndex — symbol-index fixture (Sentinel-shaped)', () => {
+  let cache: ParseCache;
+  suiteSetup(async () => {
+    cache = new ParseCache(WASM_DIR);
+    await cache.initialize();
+  });
+  suiteTeardown(() => cache.dispose());
+
+  test('AlertSESTM is referenced by AlertEngineSESTM and the test codeunit', async () => {
+    const model = new WorkspaceModel([path.join(FIX, 'symbol-index')]);
+    await model.scan();
+    const index = new SymbolIndex();
+    await index.initialize(model, cache);
+    const refs = index.getReferencers('ALchemist.Tests.SymIdxMain.AlertSESTM');
+    assert.ok(refs.size >= 2, `expected ≥2 referrers, got ${refs.size}`);
+    index.dispose();
+  });
+
+  test('Saving AlertSESTM.Table.al returns the test that references it', async () => {
+    const model = new WorkspaceModel([path.join(FIX, 'symbol-index')]);
+    await model.scan();
+    const index = new SymbolIndex();
+    await index.initialize(model, cache);
+    const tableFile = path.join(FIX, 'symbol-index/MainApp/src/AlertSESTM.Table.al');
+    const affected = index.getTestsAffectedBy(tableFile);
+    assert.ok(affected, 'expected non-null');
+    assert.ok(affected!.some(t => t.procName === 'NewReturnsTrue'));
+    index.dispose();
+  });
+});
