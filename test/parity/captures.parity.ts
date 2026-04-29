@@ -107,6 +107,22 @@ function normalizeForParity(input: any): any {
 suite('Parity — v1 (--output-json) and v2 (--server) produce equivalent UI state', function () {
   this.timeout(60_000);
 
+  let originalAlRunnerPath: string | undefined;
+
+  suiteSetup(async () => {
+    const vscode = require('vscode');
+    originalAlRunnerPath = vscode.workspace
+      .getConfiguration('alchemist')
+      .get('alRunnerPath') as string | undefined;
+  });
+
+  suiteTeardown(async () => {
+    const vscode = require('vscode');
+    await vscode.workspace
+      .getConfiguration('alchemist')
+      .update('alRunnerPath', originalAlRunnerPath, vscode.ConfigurationTarget.Global);
+  });
+
   if (!fs.existsSync(FORK)) {
     test.skip(`fork binary missing at ${FORK}; skipping parity suite`, () => {});
     return;
