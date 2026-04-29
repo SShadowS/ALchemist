@@ -15,7 +15,7 @@
     "url": "https://github.com/SShadowS/ALchemist/issues"
   },
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.88.0"
   },
   "categories": [
     "Testing",
@@ -303,7 +303,7 @@
     "@types/mocha": "^10.0.10",
     "@types/node": "^25.6.0",
     "@types/sinon": "^21.0.1",
-    "@types/vscode": "^1.85.0",
+    "@types/vscode": "^1.88.0",
     "@vscode/test-electron": "^2.5.2",
     "glob": "^13.0.6",
     "mocha": "^11.7.5",

@@ -96,6 +96,31 @@ module.exports = {
     registerCodeLensProvider: () => ({ dispose: () => {} }),
   },
   Uri: {
-    file: (path) => ({ fsPath: path }),
+    file: (path) => ({
+      fsPath: path,
+      toString: () => `file://${path.replace(/\\/g, '/')}`,
+    }),
+  },
+  TestCoverageCount: class TestCoverageCount {
+    constructor(covered, total) {
+      this.covered = covered;
+      this.total = total;
+    }
+  },
+  FileCoverage: class FileCoverage {
+    constructor(uri, statementCoverage, branchCoverage, declarationCoverage, includesTests) {
+      this.uri = uri;
+      this.statementCoverage = statementCoverage;
+      this.branchCoverage = branchCoverage;
+      this.declarationCoverage = declarationCoverage;
+      this.includesTests = includesTests;
+    }
+  },
+  StatementCoverage: class StatementCoverage {
+    constructor(executed, location, branches) {
+      this.executed = executed;
+      this.location = location;
+      this.branches = branches ?? [];
+    }
   },
 };
