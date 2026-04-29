@@ -71,11 +71,39 @@ function createMockTestController(id, label) {
   return controller;
 }
 
+/**
+ * Minimal MarkdownString mock — appendMarkdown / appendCodeblock noop-record.
+ */
+class MockMarkdownString {
+  constructor(value) {
+    this.value = value || '';
+    this.isTrusted = false;
+  }
+  appendMarkdown(s) { this.value += s; return this; }
+  appendCodeblock(s, _lang) { this.value += s; return this; }
+}
+
+/**
+ * Spy-friendly TextEditorDecorationType. The DecorationManager stores
+ * each instance and calls editor.setDecorations(type, options); tests
+ * can match by reference identity.
+ */
+class MockTextEditorDecorationType {
+  constructor(options) {
+    this.options = options;
+    this.disposed = false;
+  }
+  dispose() { this.disposed = true; }
+}
+
 module.exports = {
   workspace: {
     openTextDocument: async () => ({}),
     applyEdit: async () => true,
     workspaceFolders: [],
+    getConfiguration: (_section) => ({
+      get: (_key, defaultValue) => defaultValue,
+    }),
   },
   window: {
     showTextDocument: async () => ({}),
@@ -84,6 +112,8 @@ module.exports = {
     showErrorMessage: () => {},
     showSaveDialog: async () => undefined,
     activeTextEditor: undefined,
+    visibleTextEditors: [],
+    createTextEditorDecorationType: (options) => new MockTextEditorDecorationType(options),
   },
   commands: {
     executeCommand: async () => {},
@@ -176,6 +206,10 @@ module.exports = {
       this.range = range;
       this.command = command;
     }
+  },
+  MarkdownString: MockMarkdownString,
+  ThemeColor: class ThemeColor {
+    constructor(id) { this.id = id; }
   },
   languages: {
     registerCodeLensProvider: () => ({ dispose: () => {} }),

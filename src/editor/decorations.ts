@@ -1,6 +1,36 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { ExecutionResult, CoverageEntry, CapturedValue } from '../runner/outputParser';
+import { CapturedValue as CapturedValueV2 } from '../execution/protocolV2Types';
+
+/**
+ * Translate a v2 CapturedValue (objectName + JSON-shaped value) into the v1
+ * shape the rest of the editor pipeline still expects.
+ *
+ * Lossy notes:
+ * - v2's `objectName` is the AL object identifier (e.g. "Codeunit MyTest"),
+ *   while v1's `sourceFile` was a workspace-relative file path. The
+ *   downstream `applyInlineCapturedValues` filter uses `sourceFile` to
+ *   match the active editor; with `objectName` substituted it will
+ *   typically not match and inline rendering is skipped. Per-test wiring
+ *   from TestController (T10) replaces this best-effort flatten with
+ *   exact per-test scope, so the loss is acceptable as a transitional
+ *   stopgap.
+ * - v2's `value` is `unknown` (any JSON); we stringify non-string values
+ *   so consumers see a printable representation.
+ */
+export function v2ToV1Captured(v2: CapturedValueV2): CapturedValue {
+  return {
+    scopeName: v2.scopeName,
+    sourceFile: v2.objectName ?? '',
+    variableName: v2.variableName,
+    value: typeof v2.value === 'string' ? v2.value : JSON.stringify(v2.value),
+    statementId: v2.statementId,
+  };
+}
+
+/** Internal sentinel for the union bucket populated by v1 applyResults. */
+const LEGACY_SCOPE_KEY = '__legacy__';
 
 /**
  * Distributes messages across call sites and formats them for display.
@@ -65,8 +95,10 @@ export class DecorationManager {
 
   // Track per-file line coverage for hover provider
   private lineCoverageMap = new Map<string, Map<number, { hits: number }>>();
-  // Track captured variable values for hover provider
-  private capturedValuesStore: CapturedValue[] = [];
+  // Track captured variable values per test (v2 streaming wires via setCapturedValuesForTest;
+  // v1 applyResults dumps into the LEGACY_SCOPE_KEY bucket).
+  private capturedValuesByTest = new Map<string, CapturedValue[]>();
+  private activeTestName?: string;
 
   constructor(private readonly extensionPath: string) {
     this.coveredDecorationType = vscode.window.createTextEditorDecorationType({
@@ -143,25 +175,51 @@ export class DecorationManager {
     const config = vscode.workspace.getConfiguration('alchemist');
     const filePath = editor.document.uri.fsPath;
 
-    // Apply gutter coverage
-    if (config.get<boolean>('showGutterCoverage', true)) {
+    // v2 callers receive native gutter coverage via TestRun.addCoverage(). When
+    // result.coverageV2 is populated we suppress the custom SVG gutter to avoid
+    // double-painting; legacy v1 callers continue to use applyCoverageGutters.
+    const v2CoverageActive = !!(result.coverageV2 && result.coverageV2.length > 0);
+
+    // Apply gutter coverage (legacy/v1 path only)
+    if (config.get<boolean>('showGutterCoverage', true) && !v2CoverageActive) {
       this.applyCoverageGutters(editor, result.coverage, filePath, workspacePath);
+    } else if (v2CoverageActive) {
+      // Clear any leftover custom gutter decorations from a prior v1 run so
+      // the editor doesn't render both custom SVGs and VS Code-native gutter.
+      editor.setDecorations(this.coveredDecorationType, []);
+      editor.setDecorations(this.uncoveredDecorationType, []);
     }
 
-    // Apply dimming for uncovered lines
-    if (config.get<boolean>('dimUncoveredLines', true)) {
+    // Apply dimming for uncovered lines (still keyed off legacy CoverageEntry)
+    if (config.get<boolean>('dimUncoveredLines', true) && !v2CoverageActive) {
       this.applyDimming(editor, result.coverage, filePath, workspacePath);
     }
 
-    // Apply inline error messages from test failures
+    // Apply inline error messages from test failures. Inline error decoration
+    // continues to land at result.tests[i].alSourceLine, which T6 populated
+    // from the deepest user-frame in the v2 stack — so v2 gets correct
+    // positions without changes here.
     if (config.get<boolean>('showInlineMessages', true)) {
       this.applyInlineErrors(editor, result);
     }
 
-    // Store and apply captured variable values
-    this.capturedValuesStore = result.capturedValues;
-    if (result.capturedValues.length > 0) {
-      this.applyInlineCapturedValues(editor, result.capturedValues, result.coverage, workspacePath);
+    // Captured variable values:
+    // - v1 (no protocolVersion / undefined): top-level result.capturedValues holds the union.
+    // - v2 (protocolVersion === 2): per-test arrays live on result.tests[i].capturedValues
+    //   and use the v2 shape (objectName instead of sourceFile, value: unknown).
+    //   We flatten + translate to v1 shape so applyInlineCapturedValues and the
+    //   hover union path stay backward-compatible. T10 wires per-test scoping
+    //   via setCapturedValuesForTest, replacing this stopgap.
+    let captured: CapturedValue[];
+    if (result.protocolVersion === 2) {
+      captured = result.tests.flatMap(t => (t.capturedValues ?? []).map(v2ToV1Captured));
+    } else {
+      captured = result.capturedValues;
+    }
+
+    this.capturedValuesByTest.set(LEGACY_SCOPE_KEY, captured);
+    if (captured.length > 0) {
+      this.applyInlineCapturedValues(editor, captured, result.coverage, workspacePath);
     }
   }
 
@@ -187,8 +245,50 @@ export class DecorationManager {
     return this.lineCoverageMap.get(filePath);
   }
 
+  /**
+   * Returns captured values for hover/inline display.
+   *
+   * - When an active test is set (T10 wires this from TestController selection),
+   *   returns ONLY that test's captures.
+   * - When no active test, returns the union across all tests (preserves
+   *   pre-v2 "show all captures" behaviour).
+   * - The v1 `applyResults` path stores into the union via the LEGACY_SCOPE_KEY
+   *   bucket; v2 streaming clients use `setCapturedValuesForTest(testName, ...)`
+   *   directly.
+   */
   getCapturedValues(): CapturedValue[] {
-    return this.capturedValuesStore;
+    if (this.activeTestName !== undefined) {
+      return this.capturedValuesByTest.get(this.activeTestName) ?? [];
+    }
+    const all: CapturedValue[] = [];
+    for (const arr of this.capturedValuesByTest.values()) {
+      for (const cv of arr) { all.push(cv); }
+    }
+    return all;
+  }
+
+  /**
+   * Record per-test captured values from a v2 streaming TestEvent.
+   * Called by TestController.handleStreamingEvent (T10 wiring).
+   */
+  setCapturedValuesForTest(testName: string, values: CapturedValue[]): void {
+    this.capturedValuesByTest.set(testName, values);
+  }
+
+  /**
+   * Set which test's captured values to display in editor decorations.
+   * Pass `undefined` to fall back to the union (show-all) view.
+   * Caller is responsible for re-triggering applyResults / applyInlineCapturedValues
+   * to refresh visible decorations.
+   */
+  setActiveTest(testName: string | undefined): void {
+    this.activeTestName = testName;
+  }
+
+  /** Clear all per-test scope (e.g. when starting a new test run). */
+  clearCapturedValueScopes(): void {
+    this.capturedValuesByTest.clear();
+    this.activeTestName = undefined;
   }
 
   private applyCoverageGutters(editor: vscode.TextEditor, coverage: CoverageEntry[], filePath: string, workspacePath: string): void {
