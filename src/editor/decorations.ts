@@ -75,7 +75,7 @@ export class DecorationManager {
   // Track per-file line coverage for hover provider
   private lineCoverageMap = new Map<string, Map<number, { hits: number }>>();
   // Track captured variable values per test (v2 streaming wires via setCapturedValuesForTest;
-  // v1 applyResults dumps into the LEGACY_SCOPE_KEY bucket).
+  // v1 / save-on-save fallback stores into the LEGACY_SCOPE_KEY union bucket).
   private capturedValuesByTest = new Map<string, CapturedValue[]>();
   private activeTestName?: string;
   private warnedLossy = false;
@@ -190,14 +190,10 @@ export class DecorationManager {
     //   We flatten + translate to v1 shape so applyInlineCapturedValues and the
     //   hover union path stay backward-compatible.
     //
-    // STATUS: T10 wired per-test scoping (`setCapturedValuesForTest` +
-    // `setActiveTest`), but this LEGACY_SCOPE_KEY union path is still the
-    // active code on the save-triggered handler in `extension.ts:handleResult`,
-    // which calls `applyResults` directly without driving streaming events.
-    // The Test-Explorer-initiated path now bypasses this branch via
-    // `TestController.handleStreamingEvent`. The save-triggered path is
-    // deferred to a follow-up — see CHANGELOG known limitations
-    // ("Save-triggered runs use the v1 result-application path").
+    // Per-test scoping (Plan E2.1): Cursor-driven selection via `setActiveTest` +
+    // streaming wiring via `setCapturedValuesForTest` now drive the Test-Explorer path
+    // and save-triggered path equally. The LEGACY_SCOPE_KEY union bucket remains as
+    // the safety-net fallback when neither active test nor streaming context resolves.
     let captured: CapturedValue[];
     if (result.protocolVersion === 2) {
       captured = result.tests.flatMap(t =>
@@ -238,13 +234,14 @@ export class DecorationManager {
   /**
    * Returns captured values for hover/inline display.
    *
-   * - When an active test is set (T10 wires this from TestController selection),
+   * - When an active test is set (cursor-driven via setActiveTest from
+   *   extension.ts, or most-recent streaming test from handleStreamingEvent),
    *   returns ONLY that test's captures.
    * - When no active test, returns the union across all tests (preserves
    *   pre-v2 "show all captures" behaviour).
-   * - The v1 `applyResults` path stores into the union via the LEGACY_SCOPE_KEY
-   *   bucket; v2 streaming clients use `setCapturedValuesForTest(testName, ...)`
-   *   directly.
+   * - Both applyResults and streaming clients populate this map:
+   *   applyResults via LEGACY_SCOPE_KEY union bucket; v2 streaming via
+   *   setCapturedValuesForTest(testName, ...) per-test wiring.
    */
   getCapturedValues(): CapturedValue[] {
     if (this.activeTestName !== undefined) {
@@ -259,7 +256,7 @@ export class DecorationManager {
 
   /**
    * Record per-test captured values from a v2 streaming TestEvent.
-   * Called by TestController.handleStreamingEvent (T10 wiring).
+   * Called by TestController.handleStreamingEvent (v2 streaming path).
    */
   setCapturedValuesForTest(testName: string, values: CapturedValue[]): void {
     this.capturedValuesByTest.set(testName, values);
