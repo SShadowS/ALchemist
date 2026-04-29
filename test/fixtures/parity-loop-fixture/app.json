@@ -1,0 +1,9 @@
+{
+  "id": "11223344-5566-7788-99aa-bbccddeeff00",
+  "name": "ParityFixture",
+  "publisher": "ALchemist",
+  "version": "1.0.0.0",
+  "idRanges": [{ "from": 50300, "to": 50349 }],
+  "runtime": "12.0",
+  "features": ["NoImplicitWith"]
+}
