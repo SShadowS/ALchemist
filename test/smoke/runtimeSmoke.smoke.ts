@@ -87,6 +87,27 @@ suite('Runtime smoke — full extension activation against real ALProject4', fun
     assert.ok(cu1Coverage, 'coverageV2 must include CU1.al');
     assert.ok(cu1Coverage.lines.some(l => l.hits > 0), 'CU1.al must have at least one covered line');
 
+    // Plan E3 Group D: v2 summary must carry iteration data when
+    // iterationTracking is requested. Without this, iterationStore
+    // stays empty and the CodeLens stepper / table view silently
+    // degrade — exactly the regression that v2 introduced in
+    // Plan E1/E2. The fork binary at FORK_BINARY must be from a
+    // checkout including AL.Runner Plan E3 Group B (always-inject
+    // + Reset/Enable around Executor.RunTests + iterations field on
+    // SerializeSummary).
+    assert.ok(
+      result.iterations.length > 0,
+      'result.iterations must be non-empty for ALProject4/CU1.al ' +
+      "which contains `for i := 1 to 10 do begin ... end`. " +
+      'If empty, AL.Runner v2 isn\'t plumbing iterations into the summary ' +
+      '(see Plan E3 Group B in AL.Runner repo).',
+    );
+    const cu1Loop = result.iterations.find(loop =>
+      loop.sourceFile.toLowerCase().endsWith('cu1.al'));
+    assert.ok(cu1Loop, `iterations must include a loop in CU1.al; got ${JSON.stringify(result.iterations.map(l => l.sourceFile))}`);
+    assert.strictEqual(cu1Loop!.iterationCount, 10, 'CU1.al for-loop iterates 10 times');
+    assert.strictEqual(cu1Loop!.steps.length, 10, 'all 10 steps recorded');
+
     // 9. The DecorationManager must hold captures (proves applyResults ran the
     //    inline-render branch — the v0.5.3+ path-matcher fix). If
     //    findCoverageForFile fails to match the v2 absolute path, captures
