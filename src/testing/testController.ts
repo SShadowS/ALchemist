@@ -3,8 +3,10 @@ import * as path from 'path';
 import { discoverTestsInWorkspace, discoverTestsInWorkspaceSync, DiscoveredTestCodeunit } from './testDiscovery';
 import { ExecutionEngine } from '../execution/executionEngine';
 import { ExecutionResult } from '../runner/outputParser';
+import { TestEvent } from '../execution/protocolV2Types';
 import { WorkspaceModel } from '../workspace/workspaceModel';
 import { AlApp } from '../workspace/types';
+import { toVsCodeCoverage, getDetails } from '../execution/coverageAdapter';
 
 export interface TestTreeAppNode {
   app: AlApp;
@@ -47,10 +49,20 @@ export function groupTestItemsByApp(items: readonly { id: string }[]): Map<strin
   return groups;
 }
 
+/**
+ * Minimal interface T8 needs to expose for T10 wiring. Decoupled from
+ * the concrete DecorationManager so the testing layer doesn't pull in
+ * the editor-decoration module surface area.
+ */
+export interface TestControllerDecorationSink {
+  applyResults(editor: vscode.TextEditor, result: ExecutionResult, wsPath: string): void;
+}
+
 export class AlchemistTestController {
   private readonly controller: vscode.TestController;
   private readonly testItems = new Map<string, vscode.TestItem>();
   private readonly testItemsById = new Map<string, vscode.TestItem>();
+  private decorationManager?: TestControllerDecorationSink;
 
   constructor(
     private readonly getEngine: () => ExecutionEngine | undefined,
@@ -59,12 +71,37 @@ export class AlchemistTestController {
   ) {
     this.controller = vscode.tests.createTestController('alchemist', 'ALchemist');
 
-    this.controller.createRunProfile(
+    const runProfile = this.controller.createRunProfile(
       'Run Tests',
       vscode.TestRunProfileKind.Run,
       (request, token) => this.runTests(request, token),
-      true
+      true,
     );
+
+    // VS Code 1.88+ supports loadDetailedCoverage on run profiles. We
+    // feature-detect via property assignability rather than a typeof
+    // check on the prototype because the @types/vscode declaration may
+    // not yet expose it.
+    if (runProfile && 'loadDetailedCoverage' in runProfile) {
+      (runProfile as unknown as {
+        loadDetailedCoverage?: (
+          testRun: vscode.TestRun,
+          fc: vscode.FileCoverage,
+          token: vscode.CancellationToken,
+        ) => Promise<vscode.StatementCoverage[]>;
+      }).loadDetailedCoverage = async (_testRun, fc, _token) => {
+        return getDetails(fc) ?? [];
+      };
+    }
+  }
+
+  /**
+   * Seam used by T10 so the on-save DecorationManager can be invoked
+   * with the same `ExecutionResult` the streaming run produces. Held in
+   * a private field; stays unused inside this class for now.
+   */
+  setDecorationManager(dm: TestControllerDecorationSink): void {
+    this.decorationManager = dm;
   }
 
   /** @deprecated use refreshTestsFromModel; legacy path retained for backward compat. Will be removed once all callers migrate. */
@@ -97,6 +134,14 @@ export class AlchemistTestController {
     }
   }
 
+  /**
+   * Legacy entry: retained for save-triggered runs that go through
+   * `extension.ts:handleResult`. Streaming runs (Test Explorer) populate
+   * the run via `runTests` directly and never invoke this method.
+   *
+   * Deliberately unchanged in T8: T10 will revisit once the on-save path
+   * is wired through the same protocol-v2 streaming pipe.
+   */
   updateFromResult(result: ExecutionResult): void {
     if (result.mode !== 'test') { return; }
 
@@ -124,48 +169,174 @@ export class AlchemistTestController {
     run.end();
   }
 
-  private async runTests(request: vscode.TestRunRequest, _token: vscode.CancellationToken): Promise<void> {
+  private async runTests(request: vscode.TestRunRequest, token: vscode.CancellationToken): Promise<void> {
     const engine = this.getEngine();
     if (!engine) {
       vscode.window.showErrorMessage('ALchemist: AL.Runner not yet ready');
       return;
     }
 
-    if (!this.model) {
-      // Legacy mode: fall back to single-folder behavior pre-Task-12 wiring.
-      const wsf = vscode.workspace.workspaceFolders?.[0];
-      if (!wsf) { return; }
-      if (request.include && request.include.length > 0) {
-        for (const item of request.include) {
-          const result = await engine.runTests({ sourcePaths: [wsf.uri.fsPath], captureValues: true, iterationTracking: true, coverage: true });
-          this.onResult?.(result);
-        }
-      } else {
-        const result = await engine.runTests({ sourcePaths: [wsf.uri.fsPath], captureValues: true, iterationTracking: true, coverage: true });
-        this.onResult?.(result);
-      }
-      return;
-    }
+    const run = this.controller.createTestRun(request);
 
-    // Multi-app mode (Task 10+)
-    if (request.include && request.include.length > 0) {
-      const groups = groupTestItemsByApp(request.include);
-      const apps = this.model.getApps();
-      for (const [appId, _items] of groups) {
-        const app = apps.find(a => a.id === appId);
-        if (!app) { continue; }
-        const depPaths = this.model!.getDependencies(app.id).map(a => a.path);
-        const sourcePaths = depPaths.length > 0 ? depPaths : [app.path];
-        const result = await engine.runTests({ sourcePaths, captureValues: true, iterationTracking: true, coverage: true });
+    // Cancel forwarding: any token cancellation triggers engine.cancel().
+    // The engine implementation is fire-and-forget; mid-stream events
+    // already received remain on the run, and the final summary still
+    // arrives (with `cancelled: true` in v2).
+    const cancelSub = token.onCancellationRequested(() => {
+      void engine.cancel();
+    });
+
+    try {
+      if (!this.model) {
+        // Legacy single-folder fallback: invoked when the controller is
+        // constructed without a WorkspaceModel (older code paths).
+        const wsf = vscode.workspace.workspaceFolders?.[0];
+        if (!wsf) { return; }
+        const result = await engine.runTests(
+          { sourcePaths: [wsf.uri.fsPath], captureValues: true, iterationTracking: true, coverage: true },
+          (event) => this.handleStreamingEvent(run, event),
+        );
+        this.applyFinalResult(run, result);
         this.onResult?.(result);
+        return;
       }
-    } else {
-      // Run All: iterate every app.
-      for (const app of this.model.getApps()) {
+
+      // Multi-app mode (T8+): each app is a separate runtests invocation
+      // with the dependency closure as the source-paths list. Selection
+      // narrows the set of apps; Run All iterates every app.
+      const appsToRun = this.resolveAppsForRequest(request);
+      for (const app of appsToRun) {
         const depPaths = this.model.getDependencies(app.id).map(a => a.path);
         const sourcePaths = depPaths.length > 0 ? depPaths : [app.path];
-        const result = await engine.runTests({ sourcePaths, captureValues: true, iterationTracking: true, coverage: true });
+        const result = await engine.runTests(
+          { sourcePaths, captureValues: true, iterationTracking: true, coverage: true },
+          (event) => this.handleStreamingEvent(run, event),
+        );
+        this.applyFinalResult(run, result);
         this.onResult?.(result);
+      }
+    } finally {
+      cancelSub.dispose();
+      run.end();
+    }
+  }
+
+  /**
+   * Resolves which apps to invoke given a TestRunRequest. With no
+   * include selection we run every app in the model; otherwise we group
+   * the selected items by app guid and intersect with the model's apps.
+   */
+  private resolveAppsForRequest(request: vscode.TestRunRequest): AlApp[] {
+    if (!this.model) { return []; }
+    const apps = this.model.getApps();
+    if (!request.include || request.include.length === 0) {
+      return apps;
+    }
+    const groups = groupTestItemsByApp(request.include);
+    const result: AlApp[] = [];
+    for (const [appId] of groups) {
+      const app = apps.find(a => a.id === appId);
+      if (app) { result.push(app); }
+    }
+    return result;
+  }
+
+  /**
+   * Translates one v2 TestEvent into the appropriate run.passed/failed/
+   * errored call. Items not present in `testItems` are silently dropped
+   * — this typically means the discovered tree is stale; the next
+   * refresh will re-include them.
+   */
+  private handleStreamingEvent(run: vscode.TestRun, event: TestEvent): void {
+    if (event.type !== 'test') { return; }
+    const item = this.testItems.get(event.name);
+    if (!item) { return; }
+    if (event.status === 'pass') {
+      run.passed(item, event.durationMs);
+    } else if (event.status === 'fail') {
+      run.failed(item, this.buildTestMessage(event), event.durationMs);
+    } else {
+      // 'error' — runtime/compile/setup categories all collapse to the
+      // run.errored channel, which VS Code renders distinctly from
+      // failed assertions.
+      run.errored(item, this.buildTestMessage(event), event.durationMs);
+    }
+  }
+
+  /**
+   * Builds a TestMessage from a v2 TestEvent, including:
+   * - clickable structured stack frames (VS Code 1.93+, feature-detected)
+   * - failure location pinned to the deepest user frame
+   * Both are optional; absence is fine.
+   */
+  private buildTestMessage(event: TestEvent): vscode.TestMessage {
+    const message = new vscode.TestMessage(event.message ?? 'Test failed');
+
+    // VS Code 1.93+ supports TestMessageStackFrame for clickable failure
+    // frames. We feature-detect via the namespace export; @types/vscode
+    // 1.88 doesn't declare it, hence the casts.
+    const StackFrameCtor = (vscode as unknown as { TestMessageStackFrame?: new (label: string, uri?: vscode.Uri, position?: vscode.Position) => unknown }).TestMessageStackFrame;
+    if (StackFrameCtor && event.stackFrames && event.stackFrames.length > 0) {
+      (message as unknown as { stackTrace?: unknown[] }).stackTrace = event.stackFrames.map(f => new StackFrameCtor(
+        f.name ?? '',
+        f.source?.path ? vscode.Uri.file(f.source.path) : undefined,
+        f.line !== undefined
+          ? new vscode.Position(f.line - 1, Math.max(0, (f.column ?? 1) - 1))
+          : undefined,
+      ));
+    }
+
+    if (event.alSourceFile && event.alSourceLine !== undefined) {
+      message.location = new vscode.Location(
+        vscode.Uri.file(event.alSourceFile),
+        new vscode.Position(event.alSourceLine - 1, Math.max(0, (event.alSourceColumn ?? 1) - 1)),
+      );
+    }
+
+    return message;
+  }
+
+  /**
+   * Applies the per-app summary's residual data to the run:
+   * - emits `addCoverage` per FileCoverage when v2 coverage is present
+   * - falls back to v1-shape per-test rendering when streaming events
+   *   weren't carried (i.e. v1 server, or future v2 protocol regression)
+   */
+  private applyFinalResult(run: vscode.TestRun, result: ExecutionResult): void {
+    // VS Code native coverage rendering: only when result has v2
+    // coverage and the TestRun supports addCoverage.
+    if (result.coverageV2 && typeof (run as unknown as { addCoverage?: (fc: vscode.FileCoverage) => void }).addCoverage === 'function') {
+      const fcs = toVsCodeCoverage(result.coverageV2);
+      for (const fc of fcs) {
+        run.addCoverage(fc);
+      }
+    }
+
+    // If no streaming events were received (v1 or no protocol detected),
+    // apply the v1-style summary to populate the run. We detect via
+    // protocolVersion; v2 results have it set, v1 doesn't.
+    if (result.protocolVersion !== 2) {
+      this.applyV1Result(run, result);
+    }
+  }
+
+  private applyV1Result(run: vscode.TestRun, result: ExecutionResult): void {
+    for (const t of result.tests) {
+      const item = this.testItems.get(t.name);
+      if (!item) { continue; }
+      if (t.status === 'passed') {
+        run.passed(item, t.durationMs);
+      } else if (t.status === 'failed') {
+        const msg = new vscode.TestMessage(t.message ?? 'Test failed');
+        if (t.alSourceLine && item.uri) {
+          msg.location = new vscode.Location(
+            item.uri,
+            new vscode.Position(t.alSourceLine - 1, Math.max(0, (t.alSourceColumn ?? 1) - 1)),
+          );
+        }
+        run.failed(item, msg, t.durationMs);
+      } else {
+        run.errored(item, new vscode.TestMessage(t.message ?? 'Test errored'), t.durationMs);
       }
     }
   }

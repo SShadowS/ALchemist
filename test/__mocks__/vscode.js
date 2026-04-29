@@ -13,6 +13,64 @@ function createMockTestItem(id, label, uri) {
   return { id, label, uri, children: new MockTestItemCollection(), range: undefined };
 }
 
+/**
+ * Spy-friendly TestRun. Records every call so unit tests can assert on
+ * order, arguments, and per-method counts. Used by streaming/v2 tests.
+ */
+class MockTestRun {
+  constructor(request) {
+    this.request = request;
+    this.passedCalls = [];
+    this.failedCalls = [];
+    this.erroredCalls = [];
+    this.skippedCalls = [];
+    this.coverageCalls = [];
+    this.ended = false;
+  }
+  passed(item, duration) { this.passedCalls.push({ item, duration }); }
+  failed(item, message, duration) { this.failedCalls.push({ item, message, duration }); }
+  errored(item, message, duration) { this.erroredCalls.push({ item, message, duration }); }
+  skipped(item) { this.skippedCalls.push({ item }); }
+  addCoverage(fc) { this.coverageCalls.push(fc); }
+  end() { this.ended = true; }
+}
+
+/**
+ * Mock controller. Exposes `__lastRunProfile`, `__runProfiles`, and
+ * `__lastTestRun` so tests can drive the run-profile callback directly
+ * and observe the resulting TestRun without resorting to deeper hacks.
+ */
+function createMockTestController(id, label) {
+  const controller = {
+    id,
+    label,
+    items: new MockTestItemCollection(),
+    __runProfiles: [],
+    __lastRunProfile: undefined,
+    __lastTestRun: undefined,
+    createRunProfile(profileLabel, kind, runHandler, isDefault) {
+      const profile = {
+        label: profileLabel,
+        kind,
+        runHandler,
+        isDefault,
+        loadDetailedCoverage: undefined,
+      };
+      controller.__runProfiles.push(profile);
+      controller.__lastRunProfile = profile;
+      return profile;
+    },
+    createTestItem: createMockTestItem,
+    createTestRun(request) {
+      const run = new MockTestRun(request);
+      controller.__lastTestRun = run;
+      return run;
+    },
+    dispose() {},
+  };
+  return controller;
+}
+
 module.exports = {
   workspace: {
     openTextDocument: async () => ({}),
@@ -23,6 +81,7 @@ module.exports = {
     showTextDocument: async () => ({}),
     showWarningMessage: () => {},
     showInformationMessage: () => {},
+    showErrorMessage: () => {},
     showSaveDialog: async () => undefined,
     activeTextEditor: undefined,
   },
@@ -30,25 +89,18 @@ module.exports = {
     executeCommand: async () => {},
   },
   tests: {
-    createTestController: (id, label) => ({
-      id,
-      label,
-      items: new MockTestItemCollection(),
-      createRunProfile: () => ({}),
-      createTestItem: createMockTestItem,
-      createTestRun: () => ({
-        passed: () => {},
-        failed: () => {},
-        errored: () => {},
-        skipped: () => {},
-        end: () => {},
-      }),
-      dispose: () => {},
-    }),
+    createTestController: (id, label) => createMockTestController(id, label),
   },
   TestRunProfileKind: { Run: 1, Debug: 2, Coverage: 3 },
   TestMessage: class TestMessage {
     constructor(message) { this.message = message; }
+  },
+  TestMessageStackFrame: class TestMessageStackFrame {
+    constructor(label, uri, position) {
+      this.label = label;
+      this.uri = uri;
+      this.position = position;
+    }
   },
   TestRunRequest: class TestRunRequest {
     constructor(include, exclude, profile) {
@@ -56,6 +108,29 @@ module.exports = {
       this.exclude = exclude;
       this.profile = profile;
     }
+  },
+  CancellationTokenSource: class CancellationTokenSource {
+    constructor() {
+      this._listeners = [];
+      const self = this;
+      this.token = {
+        isCancellationRequested: false,
+        onCancellationRequested: (cb) => {
+          self._listeners.push(cb);
+          return { dispose: () => { self._listeners = self._listeners.filter(l => l !== cb); } };
+        },
+      };
+    }
+    cancel() {
+      if (this.token.isCancellationRequested) return;
+      this.token.isCancellationRequested = true;
+      const listeners = this._listeners.slice();
+      this._listeners = [];
+      for (const cb of listeners) {
+        try { cb(); } catch { /* noop */ }
+      }
+    }
+    dispose() { this._listeners = []; }
   },
   EventEmitter: class EventEmitter {
     constructor() { this._listeners = []; }
@@ -83,6 +158,16 @@ module.exports = {
         // 2-argument form: (startPosition, endPosition)
         this.start = startOrLine;
         this.end = endOrChar;
+      }
+    }
+  },
+  Location: class Location {
+    constructor(uri, rangeOrPosition) {
+      this.uri = uri;
+      if (rangeOrPosition && Object.prototype.hasOwnProperty.call(rangeOrPosition, 'start')) {
+        this.range = rangeOrPosition;
+      } else {
+        this.range = { start: rangeOrPosition, end: rangeOrPosition };
       }
     }
   },
