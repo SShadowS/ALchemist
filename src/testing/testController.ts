@@ -180,6 +180,27 @@ export class AlchemistTestController {
     return this.testItemsById;
   }
 
+  /**
+   * Returns the top-level `app-<guid>` TestItem for the given app id, or
+   * undefined if the controller's tree doesn't currently contain that app.
+   * Used by extension.ts:runViaController to build a TestRunRequest that
+   * scopes a save-triggered run to specific apps even when no individual
+   * test items are selected (fallback-tier save).
+   *
+   * Note: we resolve via `controller.items.get(...)` rather than walking
+   * `testItemsById` because the latter only stores `test-` ids; app-level
+   * items live on the controller's root collection.
+   */
+  getAppTestItem(appId: string): vscode.TestItem | undefined {
+    // VS Code's TestItemCollection lacks a direct `get(id)` in older API
+    // surfaces, but the mock and 1.88+ both expose `forEach`. Walk to find.
+    let found: vscode.TestItem | undefined;
+    this.controller.items.forEach(item => {
+      if (item.id === `app-${appId}`) { found = item; }
+    });
+    return found;
+  }
+
   /** @deprecated use refreshTestsFromModel; legacy path retained for backward compat. Will be removed once all callers migrate. */
   async refreshTests(workspacePath: string): Promise<void> {
     const codeunits = await discoverTestsInWorkspace(workspacePath);
@@ -264,6 +285,24 @@ export class AlchemistTestController {
     } finally {
       this.currentAppId = prevAppId;
     }
+  }
+
+  /**
+   * Programmatically execute a TestRun, equivalent to the user clicking
+   * Run in Test Explorer. Used by save-triggered runs (extension.ts) so
+   * they get the same v2 streaming features (progressive run.passed/
+   * failed, addCoverage, clickable stack frames) as Test-Explorer-
+   * initiated runs.
+   *
+   * The request.include should contain TestItems (sourced from
+   * `getTestItemsById()`) for the affected tests; if empty/undefined, the
+   * run iterates every app like "Run All" does.
+   */
+  async runTestsForRequest(
+    request: vscode.TestRunRequest,
+    token: vscode.CancellationToken,
+  ): Promise<void> {
+    await this.runTests(request, token);
   }
 
   private async runTests(request: vscode.TestRunRequest, token: vscode.CancellationToken): Promise<void> {

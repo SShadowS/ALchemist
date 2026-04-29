@@ -170,6 +170,78 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     void testController.refreshTestsFromModel(workspaceModel);
   });
 
+  // --- Save → controller bridge (Plan E2.1 Task 6) ---
+  //
+  // Programmatic entry into TestController.runTestsForRequest so that
+  // save-triggered runs share the v2 streaming pipeline (live run.passed/
+  // failed events, native run.addCoverage, clickable TestMessageStackFrames)
+  // with Test-Explorer-initiated runs.
+  //
+  // The two prior direct `engine.runTests({...})` call sites in this file
+  // (the save handler and runWiderScope) are replaced by this helper. By
+  // building a TestRunRequest from the controller's compound-id tree, we
+  // delegate the per-app loop, source-path resolution, and result handling
+  // (via the `onResult` callback wired in the controller constructor) back
+  // to the same code path that Test Explorer uses.
+  async function runViaController(
+    affectedAppIds: string[],
+    affectedTestNames: string[] | undefined,
+    token: vscode.CancellationToken,
+  ): Promise<void> {
+    if (!testController) { return; }
+    if (affectedAppIds.length === 0) { return; }
+
+    let include: vscode.TestItem[] | undefined;
+
+    // Tier 1 (precision): both app ids and specific test names — narrow to
+    // the matching test items so the controller only invokes engine.runTests
+    // once per affected app, AND the user sees per-test progress in Test
+    // Explorer.
+    if (affectedTestNames && affectedTestNames.length > 0) {
+      const items = testController.getTestItemsById();
+      const matched: vscode.TestItem[] = [];
+      const appIdSet = new Set(affectedAppIds);
+      for (const [id, item] of items) {
+        // Compound id shape: `test-<appGuid>-<codeunitId>-<procName>`.
+        // Extract the appGuid prefix and check membership against the
+        // affected app set.
+        const match = /^test-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-/i.exec(id);
+        if (!match) { continue; }
+        if (!appIdSet.has(match[1])) { continue; }
+        if (affectedTestNames.includes(item.label)) {
+          matched.push(item);
+        }
+      }
+      if (matched.length > 0) {
+        include = matched;
+      }
+      // If matched.length === 0 the test names didn't resolve (stale tree,
+      // discoverer/router skew). Fall through to app-scoped include below.
+    }
+
+    // Tier 2 (fallback or precision-with-no-test-match): no specific tests
+    // — scope to the affected apps by including their `app-<guid>` items.
+    // The controller's resolveAppsForRequest groups by guid, so this
+    // narrows engine invocations to exactly the requested apps.
+    if (!include) {
+      const appItems: vscode.TestItem[] = [];
+      for (const appId of affectedAppIds) {
+        const appItem = testController.getAppTestItem(appId);
+        if (appItem) { appItems.push(appItem); }
+      }
+      // If none of the affected apps are present in the tree (e.g. the
+      // tree hasn't refreshed after a workspace change), include stays
+      // undefined and the controller's "Run All" path fires. That's a
+      // safe degradation — better than silently running nothing.
+      if (appItems.length > 0) {
+        include = appItems;
+      }
+    }
+
+    const request = new vscode.TestRunRequest(include, undefined, undefined);
+    await testController.runTestsForRequest(request, token);
+  }
+
   // --- Result handler (shared between on-save and runNow) ---
 
   function handleResult(result: import('./runner/outputParser').ExecutionResult): void {
@@ -312,18 +384,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           statusBar.setTier('fallback', undefined, savePlan.reason);
         }
 
-        for (const app of savePlan.apps) {
-          const depPaths = workspaceModel.getDependencies(app.id).map(a => a.path);
+        // Route the save-triggered run through the TestController so it
+        // uses the same v2 streaming pipeline as Test-Explorer-initiated
+        // runs. The controller's run-profile body iterates the affected
+        // apps, resolves source paths, and forwards the per-app summary
+        // via the `onResult` callback (= `handleResult`) we wired in the
+        // controller constructor. So we DON'T call handleResult here.
+        if (savePlan.apps.length > 0) {
+          // Engine readiness gate — controller would otherwise show a
+          // "not yet ready" message and bail mid-run.
+          await executionEngineReady;
+          if (!executionEngine) {
+            vscode.window.showErrorMessage('ALchemist: AL.Runner not available');
+            return;
+          }
           statusBar.setRunning('test');
-          await withEngine(async (engine) => {
-            const result = await engine.runTests({
-              sourcePaths: depPaths,
-              captureValues: true,
-              iterationTracking: true,
-              coverage: true,
-            });
-            handleResult(result);
-          });
+          // Per-save cancellation source: future Stop button could
+          // dispatch through this token. Disposed in finally so listeners
+          // detach even on errors.
+          const cts = new vscode.CancellationTokenSource();
+          try {
+            const affectedAppIds = savePlan.apps.map(a => a.id);
+            const affectedTestNames = savePlan.tier === 'precision'
+              ? savePlan.affectedTests.map(t => t.procName)
+              : undefined;
+            await runViaController(affectedAppIds, affectedTestNames, cts.token);
+          } finally {
+            cts.dispose();
+          }
         }
       }
     })
@@ -454,18 +542,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       const apps = workspaceModel.getDependents(owningApp.id);
       statusBar.setTier('fallback', `wider scope (${apps.length} apps)`, 'forced wider scope via Ctrl+Shift+A Shift+R');
-      for (const app of apps) {
-        const depPaths = workspaceModel.getDependencies(app.id).map(a => a.path);
-        statusBar.setRunning('test');
-        await withEngine(async (engine) => {
-          const result = await engine.runTests({
-            sourcePaths: depPaths,
-            captureValues: true,
-            iterationTracking: true,
-            coverage: true,
-          });
-          handleResult(result);
-        });
+      if (apps.length === 0) { return; }
+      // Same controller-routed flow as the on-save handler: gives
+      // wider-scope runs the v2 streaming features (live progress,
+      // native coverage, clickable stack frames). handleResult fires
+      // per app via the controller's onResult callback.
+      await executionEngineReady;
+      if (!executionEngine) {
+        vscode.window.showErrorMessage('ALchemist: AL.Runner not available');
+        return;
+      }
+      statusBar.setRunning('test');
+      const cts = new vscode.CancellationTokenSource();
+      try {
+        await runViaController(apps.map(a => a.id), undefined, cts.token);
+      } finally {
+        cts.dispose();
       }
     })
   );
