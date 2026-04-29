@@ -174,6 +174,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   function handleResult(result: import('./runner/outputParser').ExecutionResult): void {
     statusBar.setResult(result);
 
+    // Surface protocol version on the status bar tooltip.
+    if (typeof result.protocolVersion === 'number') {
+      statusBar.setProtocolVersion(result.protocolVersion);
+    } else {
+      // result.protocolVersion is undefined for v1 servers or scratch executes.
+      // Don't downgrade the tooltip on every scratch run — only set v1 if explicit.
+      // Heuristic: only update if mode === 'test' (a runtests just completed).
+      if (result.mode === 'test') {
+        statusBar.setProtocolVersion(undefined);
+      }
+    }
+
     const activeFile = vscode.window.activeTextEditor?.document.fileName || 'unknown';
     outputChannel.displayResult(result, path.basename(activeFile));
 

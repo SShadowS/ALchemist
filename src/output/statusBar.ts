@@ -6,6 +6,7 @@ export type RunMode = 'test' | 'scratch-standalone' | 'scratch-project';
 export class StatusBarManager {
   private readonly item: vscode.StatusBarItem;
   private tierItem: vscode.StatusBarItem;
+  private currentProtocolVersion: number | undefined;
 
   constructor() {
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -84,6 +85,36 @@ export class StatusBarManager {
       this.tierItem.text = scopeText ? `$(circle-slash) ${scopeText}` : '$(circle-slash) fallback';
       this.tierItem.tooltip = `ALchemist: fallback tier${tooltip ? ' — ' + tooltip : ''}`;
     }
+  }
+
+  /**
+   * Update the status bar tooltip to reflect the detected AL.Runner
+   * protocol version. v2 → "AL.Runner protocol v2"; v1 (or undefined) →
+   * "AL.Runner protocol v1 (upgrade for live updates)".
+   */
+  setProtocolVersion(version: number | undefined): void {
+    this.currentProtocolVersion = version;
+    this.refreshTooltip();
+  }
+
+  private refreshTooltip(): void {
+    // Refresh the main item's tooltip to append protocol version info.
+    const baseTooltip = this.item.tooltip?.toString() || 'ALchemist';
+    let fullTooltip = baseTooltip;
+    const protocolLine = this.getProtocolTooltip();
+    if (baseTooltip && !baseTooltip.includes('protocol')) {
+      fullTooltip = baseTooltip + '\n' + protocolLine;
+    } else if (!baseTooltip.includes('protocol')) {
+      fullTooltip = protocolLine;
+    }
+    this.item.tooltip = fullTooltip;
+  }
+
+  private getProtocolTooltip(): string {
+    if (this.currentProtocolVersion !== undefined && this.currentProtocolVersion >= 2) {
+      return `AL.Runner protocol v${this.currentProtocolVersion}`;
+    }
+    return 'AL.Runner protocol v1 (upgrade for live updates)';
   }
 
   // --- Iteration stepper ---

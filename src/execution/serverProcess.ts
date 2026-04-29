@@ -32,8 +32,19 @@ export class ServerProcess {
   private readyResolve: (() => void) | undefined;
   /** True while dispatchWhenReady is awaiting readyPromise (prevents duplicate dispatchers). */
   private dispatching = false;
+  /** Last-observed protocol version from a runtests summary line. */
+  private detectedProtocolVersion: number | undefined;
 
   constructor(private readonly opts: ServerProcessOptions) {}
+
+  /**
+   * Last-observed protocol version from a runtests summary line.
+   * Returns undefined if no v2 summary has been seen (server is v1 or
+   * no runtests has completed yet).
+   */
+  getProtocolVersion(): number | undefined {
+    return this.detectedProtocolVersion;
+  }
 
   /**
    * Send a payload to the AL.Runner --server process.
@@ -182,6 +193,11 @@ export class ServerProcess {
     const req = this.inFlight!;
     if (isProtocolV2Line(obj)) {
       if (obj.type === 'summary' || obj.type === 'ack') {
+        // Capture protocol version before resolving, so downstream consumers
+        // can query it via getProtocolVersion().
+        if (obj.type === 'summary' && typeof obj.protocolVersion === 'number') {
+          this.detectedProtocolVersion = obj.protocolVersion;
+        }
         // Terminal line — resolve.
         this.inFlight = undefined;
         req.resolve(obj);
