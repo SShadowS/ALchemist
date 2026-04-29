@@ -1,4 +1,5 @@
 import * as cp from 'child_process';
+import { isProtocolV2Line, ProtocolLine } from './protocolV2Types';
 
 export type ServerSpawner = (runnerPath: string, args: string[]) => cp.ChildProcessWithoutNullStreams;
 
@@ -14,6 +15,7 @@ interface PendingRequest {
   resolve: (value: any) => void;
   reject: (err: Error) => void;
   retried: boolean;
+  onEvent?: (event: ProtocolLine) => void;
 }
 
 export class ServerProcess {
@@ -31,12 +33,21 @@ export class ServerProcess {
 
   constructor(private readonly opts: ServerProcessOptions) {}
 
-  async send(payload: object): Promise<any> {
+  async send(payload: object, onEvent?: (event: ProtocolLine) => void): Promise<any> {
     if (this.disposed) { throw new Error('ServerProcess disposed'); }
     return new Promise((resolve, reject) => {
-      this.queue.push({ payload, resolve, reject, retried: false });
+      this.queue.push({ payload, resolve, reject, retried: false, onEvent });
       this.pump();
     });
+  }
+
+  async cancel(): Promise<void> {
+    if (this.disposed || !this.proc) { return; }
+    try {
+      this.proc.stdin.write(JSON.stringify({ command: 'cancel' }) + '\n');
+    } catch {
+      // ignore — best-effort fire-and-forget
+    }
   }
 
   isHealthy(): boolean {
@@ -134,13 +145,29 @@ export class ServerProcess {
         continue;
       }
       if (this.inFlight) {
-        const req = this.inFlight;
-        this.inFlight = undefined;
-        req.resolve(obj);
-        // Dispatch the next queued request.
-        this.pump();
+        this.routeLine(obj);
       }
     }
+  }
+
+  private routeLine(obj: any): void {
+    const req = this.inFlight!;
+    if (isProtocolV2Line(obj)) {
+      if (obj.type === 'summary' || obj.type === 'ack') {
+        // Terminal line — resolve.
+        this.inFlight = undefined;
+        req.resolve(obj);
+        this.pump();
+        return;
+      }
+      // Non-terminal v2 line (test / progress) — fire onEvent, keep buffering.
+      req.onEvent?.(obj);
+      return;
+    }
+    // Not a v2 line. v1 fallback: a single-line response. Resolve directly.
+    this.inFlight = undefined;
+    req.resolve(obj);
+    this.pump();
   }
 
   private handleExit(_code: number | null): void {
