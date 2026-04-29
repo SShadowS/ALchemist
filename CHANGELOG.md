@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.2 (2026-04-29)
+
+### Fixes
+
+- **Inline captured-value decorations now render on save-triggered runs.** v0.5.1 threaded `alSourceFile` from the test event into `v2ToV1Captured`, but that field is set only on FAILING tests (via stack-walking). Passing tests left it undefined; the fallback substituted `objectName` (e.g. `"CU1"`) which never matched the editor's file path, so DecorationManager silently dropped every capture. Requires the AL.Runner fork branch `feat/alchemist-protocol-v1` at commit `f2d2bb3` or later — the runner now emits a per-capture `alSourceFile` resolved via `SourceFileMapper.GetFile(objectName)`. The translator prefers the capture's own `alSourceFile`, falls back to the event's, and only as a last resort uses the lossy `objectName`.
+
+### Internal
+
+- `protocolV2Types.CapturedValue` gains optional `alSourceFile?: string`.
+- `v2ToV1Captured(v2, fallbackAlSourceFile?)` now resolves `sourceFile` in priority order: per-capture → fallback → objectName.
+
+### Requires
+
+- AL.Runner fork branch `feat/alchemist-protocol-v1` at `f2d2bb3` or later. Older fork builds work but lose inline captured-value rendering on passing tests; failing-test rendering continues to work via the stack-walked `alSourceFile`.
+
 ## 0.5.1 (2026-04-29)
 
 ### Fixes (closing v0.5.0 known limitations)
