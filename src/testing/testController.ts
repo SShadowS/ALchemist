@@ -55,6 +55,7 @@ export class AlchemistTestController {
   constructor(
     private readonly getEngine: () => ExecutionEngine | undefined,
     private readonly model?: WorkspaceModel,
+    private readonly onResult?: (result: ExecutionResult) => void,
   ) {
     this.controller = vscode.tests.createTestController('alchemist', 'ALchemist');
 
@@ -136,10 +137,12 @@ export class AlchemistTestController {
       if (!wsf) { return; }
       if (request.include && request.include.length > 0) {
         for (const item of request.include) {
-          await engine.runTests({ sourcePaths: [wsf.uri.fsPath], captureValues: true, iterationTracking: true, coverage: true });
+          const result = await engine.runTests({ sourcePaths: [wsf.uri.fsPath], captureValues: true, iterationTracking: true, coverage: true });
+          this.onResult?.(result);
         }
       } else {
-        await engine.runTests({ sourcePaths: [wsf.uri.fsPath], captureValues: true, iterationTracking: true, coverage: true });
+        const result = await engine.runTests({ sourcePaths: [wsf.uri.fsPath], captureValues: true, iterationTracking: true, coverage: true });
+        this.onResult?.(result);
       }
       return;
     }
@@ -153,14 +156,16 @@ export class AlchemistTestController {
         if (!app) { continue; }
         const depPaths = this.model!.getDependencies(app.id).map(a => a.path);
         const sourcePaths = depPaths.length > 0 ? depPaths : [app.path];
-        await engine.runTests({ sourcePaths, captureValues: true, iterationTracking: true, coverage: true });
+        const result = await engine.runTests({ sourcePaths, captureValues: true, iterationTracking: true, coverage: true });
+        this.onResult?.(result);
       }
     } else {
       // Run All: iterate every app.
       for (const app of this.model.getApps()) {
         const depPaths = this.model.getDependencies(app.id).map(a => a.path);
         const sourcePaths = depPaths.length > 0 ? depPaths : [app.path];
-        await engine.runTests({ sourcePaths, captureValues: true, iterationTracking: true, coverage: true });
+        const result = await engine.runTests({ sourcePaths, captureValues: true, iterationTracking: true, coverage: true });
+        this.onResult?.(result);
       }
     }
   }

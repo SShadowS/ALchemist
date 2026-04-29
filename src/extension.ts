@@ -138,7 +138,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })();
 
     // testController uses a lazy getter so it can be constructed before the engine is ready
-    testController = new AlchemistTestController(() => executionEngine, workspaceModel);
+    testController = new AlchemistTestController(() => executionEngine, workspaceModel, handleResult);
   } catch (err: any) {
     console.error('ALchemist: failed to initialize components:', err);
     vscode.window.showErrorMessage(`ALchemist failed to initialize: ${err.message}`);
