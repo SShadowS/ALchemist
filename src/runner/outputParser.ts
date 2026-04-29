@@ -9,6 +9,21 @@ export interface TestResult {
   stackTrace: string | undefined;
   alSourceLine: number | undefined;    // 1-based line in AL source
   alSourceColumn: number | undefined;  // 1-based column in AL source
+
+  /** v2: AL source file (relative, forward-slash) of the deepest user frame. */
+  alSourceFile?: string;
+
+  /** v2: error category for IDE UI variation. */
+  errorKind?: import('../execution/protocolV2Types').AlErrorKind;
+
+  /** v2: structured stack frames from StackFrameMapper. */
+  stackFrames?: import('../execution/protocolV2Types').AlStackFrame[];
+
+  /** v2: per-test Message() output (empty array when test ran without Message calls). */
+  messages?: string[];
+
+  /** v2: per-test captured variable values. */
+  capturedValues?: import('../execution/protocolV2Types').CapturedValue[];
 }
 
 export interface CapturedValue {
@@ -45,6 +60,19 @@ export interface ExecutionResult {
   capturedValues: CapturedValue[];
   cached: boolean;
   iterations: IterationData[];
+
+  /** v2: true if a runtests request received a cancel mid-stream. */
+  cancelled?: boolean;
+
+  /** v2: protocol version reported by the server's summary. Undefined for v1. */
+  protocolVersion?: number;
+
+  /**
+   * v2: native-shape coverage for `vscode.TestRun.addCoverage()`. Coexists
+   * with the legacy cobertura-derived `coverage` field (CoverageEntry[]).
+   * v1 callers continue to read `coverage`; v2 callers read `coverageV2`.
+   */
+  coverageV2?: import('../execution/protocolV2Types').FileCoverage[];
 }
 
 const PASS_REGEX = /^PASS\s{2}(\S+)\s+\((\d+)ms\)$/;
