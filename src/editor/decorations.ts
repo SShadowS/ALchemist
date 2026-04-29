@@ -78,6 +78,7 @@ export class DecorationManager {
   // v1 applyResults dumps into the LEGACY_SCOPE_KEY bucket).
   private capturedValuesByTest = new Map<string, CapturedValue[]>();
   private activeTestName?: string;
+  private warnedLossy = false;
 
   constructor(private readonly extensionPath: string) {
     this.coveredDecorationType = vscode.window.createTextEditorDecorationType({
@@ -418,6 +419,16 @@ export class DecorationManager {
 
   private applyInlineCapturedValues(editor: vscode.TextEditor, capturedValues: CapturedValue[], coverage: CoverageEntry[], workspacePath: string): void {
     if (capturedValues.length === 0) return;
+
+    // Detect lossy v2-translated values once per session: a sourceFile that
+    // doesn't end .al likely came from objectName fallback in v2ToV1Captured.
+    if (!this.warnedLossy && capturedValues.some(cv => cv.sourceFile && !cv.sourceFile.toLowerCase().endsWith('.al'))) {
+      console.warn(
+        '[ALchemist] Captured values arrived with non-.al sourceFile (likely lossy v2 translation).',
+        'Inline render filter may drop them. See Plan E2.1 task 2 for details.',
+      );
+      this.warnedLossy = true;
+    }
 
     // Filter captured values to only those belonging to this file
     const filePath = editor.document.uri.fsPath;

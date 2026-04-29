@@ -239,6 +239,55 @@ suite('DecorationManager — coverageV2 retires custom gutter', () => {
 
     dm.dispose();
   });
+
+  test('lossy non-.al sourceFile triggers one-time console.warn', () => {
+    const fakeEditor = {
+      setDecorations: () => {},
+      document: { uri: { fsPath: '/ws/Foo.al' } },
+    } as any;
+    const dm = new DecorationManager(__dirname);
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...args: any[]) => { warnings.push(args.join(' ')); };
+    try {
+      const lossy: any[] = [{
+        scopeName: 's', sourceFile: 'Codeunit Foo',
+        variableName: 'x', value: '1', statementId: 0,
+      }];
+      // applyInlineCapturedValues is private; access via cast.
+      (dm as any).applyInlineCapturedValues(fakeEditor, lossy, [], '/ws');
+      (dm as any).applyInlineCapturedValues(fakeEditor, lossy, [], '/ws');
+      const lossyWarnings = warnings.filter(w => w.includes('lossy v2 translation'));
+      assert.strictEqual(lossyWarnings.length, 1,
+        'warning fires exactly once across multiple invocations');
+    } finally {
+      console.warn = origWarn;
+      dm.dispose();
+    }
+  });
+
+  test('proper .al sourceFile does NOT trigger the warning', () => {
+    const fakeEditor = {
+      setDecorations: () => {},
+      document: { uri: { fsPath: '/ws/Foo.al' } },
+    } as any;
+    const dm = new DecorationManager(__dirname);
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...args: any[]) => { warnings.push(args.join(' ')); };
+    try {
+      const proper: any[] = [{
+        scopeName: 's', sourceFile: 'src/Foo.al',
+        variableName: 'x', value: '1', statementId: 0,
+      }];
+      (dm as any).applyInlineCapturedValues(fakeEditor, proper, [], '/ws');
+      const lossyWarnings = warnings.filter(w => w.includes('lossy v2 translation'));
+      assert.strictEqual(lossyWarnings.length, 0);
+    } finally {
+      console.warn = origWarn;
+      dm.dispose();
+    }
+  });
 });
 
 // --- Test helpers ---------------------------------------------------------
