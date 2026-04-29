@@ -2,7 +2,7 @@
   "name": "al-chemist",
   "displayName": "ALchemist - AL Live Runner",
   "description": "Quokka-style live execution and inline feedback for AL (Business Central)",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "publisher": "SShadowSdk",
   "license": "MIT",
   "icon": "resources/icon.png",

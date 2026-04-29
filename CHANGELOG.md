@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.5.5 (2026-04-29)
+
+### Restored from v0.3.0
+
+- **Iteration stepper / table view.** AL.Runner v2's wire format silently dropped the `iterations` summary field when Plan E1/E2 modernized the protocol — `Pipeline.cs` already collected the data for the v1 `--output-json` path, but `Server.cs` never plumbed it through. ALchemist's iteration UI quietly degraded to no-op as a result. Plan E3 Group B (`AL.Runner` upstream) emits the field on the v2 summary with the same shape v1 produced, and Plan E3 Group D (consumer) pins the contract. Iteration Codelens, navigation keybindings, and table panel work again.
+
+- **Compact loop captured-value rendering.** Inline display of loop iterations had collapsed to the last value (`myInt = 56`). Restored the v0.3.0 `myInt = 2 ‥ 56 (×10)` distribution form. 2-3 distinct values join with pipe (`a | b | c`); 4+ use compact-form. Hover continues to expose the full series, capped at 50 captures with a `_N omitted_` suffix to keep the hover legible on real workloads.
+
+### Fixes (cross-repo)
+
+- **AL.Runner emits absolute paths regardless of cwd.** The fork's `Pipeline.cs` previously emitted `Path.GetRelativePath(Directory.GetCurrentDirectory(), file)` for source-file paths. When ALchemist spawned the runner from VS Code's extension host, the cwd was VS Code's install dir and the resulting paths walked up several levels (`../../../../Documents/AL/<...>`). ALchemist's `path.resolve(workspacePath, sourceFile)` then walked to the wrong absolute path and silently dropped every capture. The runner now emits `Path.GetFullPath(file).Replace('\\', '/')`. The v0.5.4 `cwd`-pin workaround in `extension.ts` is removed; `ServerProcess.cwd` remains as a defensive opt-in for diagnostics.
+
+- **`IterationTracker.Reset()` returns the tracker to a known disabled ground state** — defensive contract change. The injection in `Pipeline.cs` is unconditional now (mirrors the established `ValueCaptureInjector` pattern); cached assemblies serve both `iterationTracking=true` and `=false` requests without recompilation.
+
+### Schema
+
+- `protocol-v2.schema.json` documents `coverage[].file` and `capturedValues[].alSourceFile` as absolute fwd-slash paths, defines the new `IterationLoop` type, and adds `iterations` (array, omitted when not requested) to `Summary`. New definitions added for the protocol's `Ready` / `ShutdownAck` handshake lines so AJV validation covers a real runtime session. Sample at `docs/protocol-v2-samples/runtests-iterations.ndjson` captures a known-good wire payload.
+
+### Tests
+
+- New cross-protocol parity suite (`npm run test:parity`) drives a single AL fixture through both v1 (`--output-json`) and v2 (`--server`) producers and asserts UI-relevant equivalence on captures, iterations, coverage, and test statuses. Future protocol changes that drop or rename fields surface here, not in the user's editor weeks later. `npm test` chains unit → integration → parity. Suite skips cleanly when the fork binary or fixture isn't present.
+- Smoke test extended to assert iterations populate end-to-end (`iterationCount === 10`, `steps.length === 10` for ALProject4's `for i := 1 to 10` loop) and to assert multi-valued captures arrive at the DecorationManager so the dedup regression can't recur silently.
+- Unit tests pin `formatCaptureGroup`'s 0/1/2-3/4+ branches and `applyInlineCapturedValues`'s grouping behavior with concrete content-text regex assertions.
+
+### Why this took several releases
+
+A modernization PR (Plan E1/E2) shipped without a feature-parity audit against the prior release. Subsequent releases (v0.5.1 through v0.5.4) chased visible symptoms — captures missing, paths mismatched, gutter not painting — without surfacing the underlying spec gap. Plan E3 names that gap and locks parity into a test suite so it can't recur silently. The implementation plan is checked in at `docs/superpowers/plans/2026-04-29-plan-e3-protocol-v2-parity.md`.
+
 ## 0.5.4 (2026-04-29)
 
 ### Fixes
