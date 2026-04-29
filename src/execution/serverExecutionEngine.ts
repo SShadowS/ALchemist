@@ -1,5 +1,11 @@
 import { ExecutionEngine, RunTestsRequest, ExecuteScratchRequest } from './executionEngine';
-import { ExecutionResult } from '../runner/outputParser';
+import { ExecutionResult, TestResult } from '../runner/outputParser';
+
+const STATUS_MAP: Record<string, 'passed' | 'failed' | 'errored'> = {
+  pass: 'passed',
+  fail: 'failed',
+  error: 'errored',
+};
 
 interface ServerProcessLike {
   send(payload: object): Promise<any>;
@@ -52,12 +58,34 @@ export class ServerExecutionEngine implements ExecutionEngine {
     if (response.error) {
       return failureResult(response.error, startTime, mode);
     }
+    const rawTests: any[] = response.tests ?? [];
+    const tests: TestResult[] = rawTests.map((t: any) => ({
+      name: t.name,
+      status: STATUS_MAP[t.status] ?? 'errored',
+      durationMs: t.durationMs ?? undefined,
+      message: t.message ?? undefined,
+      stackTrace: t.stackTrace ?? undefined,
+      alSourceLine: t.alSourceLine ?? undefined,
+      alSourceColumn: t.alSourceColumn ?? undefined,
+    }));
+
+    const summary = response.summary ?? (
+      (response.passed !== undefined || response.total !== undefined)
+        ? {
+            passed: response.passed ?? 0,
+            failed: response.failed ?? 0,
+            errors: response.errors ?? 0,
+            total: response.total ?? 0,
+          }
+        : undefined
+    );
+
     return {
       mode,
-      tests: response.tests ?? [],
+      tests,
       messages: response.messages ?? [],
       stderrOutput: [],
-      summary: response.summary,
+      summary,
       coverage: response.coverage ?? [],
       exitCode: response.exitCode ?? 0,
       durationMs: Date.now() - startTime,
