@@ -15,12 +15,14 @@ export interface ServerProcessOptions {
   /**
    * Working directory for the spawned AL.Runner process.
    *
-   * AL.Runner emits source-file paths via `Path.GetRelativePath(cwd, file)`
-   * (Pipeline.cs:457), so its cwd anchors how those paths look on the wire.
-   * If unset, child inherits the extension host's cwd — typically the VS Code
-   * install dir — and emitted paths become awkward `../../../../...` strings
-   * that ALchemist's downstream filters can't resolve against the workspace.
-   * Pin to the workspace folder so emitted paths are workspace-relative.
+   * Defensive opt-in for diagnostic scenarios. AL.Runner v2 emits source
+   * paths via `Path.GetFullPath(file).Replace('\\','/')` (absolute,
+   * fwd-slash) regardless of cwd, so the wire format is stable whatever
+   * the spawner's cwd. The v0.5.4 cwd pin that compensated for the older
+   * `Path.GetRelativePath(cwd, file)` emission is no longer needed (Plan
+   * E3 Group A landed the upstream fix). Production callers leave this
+   * unset; the option remains so tests and future debug paths can inject
+   * a custom cwd without monkey-patching.
    */
   cwd?: string;
 }
