@@ -115,6 +115,26 @@ module.exports = {
       this.declarationCoverage = declarationCoverage;
       this.includesTests = includesTests;
     }
+    /**
+     * Mirror of vscode.FileCoverage.fromDetails (VS Code 1.88+):
+     * derive statement totals from a detail array.
+     *   - total   = details.length
+     *   - covered = details where executed > 0 (or === true)
+     * branchCoverage / declarationCoverage are left undefined; this matches
+     * what the public factory does for callers that supply only statement
+     * details.
+     */
+    static fromDetails(uri, details) {
+      const total = details.length;
+      const covered = details.filter(d => {
+        const e = d.executed;
+        return typeof e === 'number' ? e > 0 : !!e;
+      }).length;
+      // Lazy-grab TestCoverageCount from module.exports so the same class
+      // identity is used as the rest of the mock.
+      const TCC = module.exports.TestCoverageCount;
+      return new module.exports.FileCoverage(uri, new TCC(covered, total), undefined, undefined);
+    }
   },
   StatementCoverage: class StatementCoverage {
     constructor(executed, location, branches) {
