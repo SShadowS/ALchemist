@@ -7,6 +7,19 @@ export class StatusBarManager {
   private readonly item: vscode.StatusBarItem;
   private tierItem: vscode.StatusBarItem;
   private currentProtocolVersion: number | undefined;
+  /**
+   * The non-protocol portion of the tooltip — what each setter (setIdle,
+   * setRunning, setTestResult, setScratchResult) wants the tooltip to say
+   * about the run state. The protocol-version line is appended on top of
+   * this by `refreshTooltip` and is the ONLY place that touches
+   * `this.item.tooltip` directly.
+   *
+   * Keeping the base separate eliminates the previous fragile
+   * `tooltip.includes('protocol')` heuristic — every tooltip mutation now
+   * routes through `setBaseTooltip`, which calls `refreshTooltip`, which
+   * deterministically composes `${baseTooltip}\n${protocolLine}`.
+   */
+  private baseTooltip: string = 'ALchemist';
 
   constructor() {
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -23,7 +36,7 @@ export class StatusBarManager {
     this.item.text = '$(beaker) ALchemist';
     this.item.color = undefined;
     this.item.backgroundColor = undefined;
-    this.item.tooltip = 'ALchemist \u2014 Ready';
+    this.setBaseTooltip('ALchemist \u2014 Ready');
   }
 
   setRunning(mode: RunMode): void {
@@ -31,7 +44,7 @@ export class StatusBarManager {
     this.item.color = undefined;
     this.item.backgroundColor = undefined;
     const modeLabel = mode === 'test' ? 'tests' : 'scratch file';
-    this.item.tooltip = `ALchemist \u2014 Running ${modeLabel}...`;
+    this.setBaseTooltip(`ALchemist \u2014 Running ${modeLabel}...`);
   }
 
   setResult(result: ExecutionResult): void {
@@ -59,7 +72,7 @@ export class StatusBarManager {
     const coverageTotal = result.coverage.reduce((s, e) => s + e.lines.length, 0);
     const coverageCovered = result.coverage.reduce((s, e) => s + e.lines.filter((l) => l.hits > 0).length, 0);
     const pct = coverageTotal > 0 ? ((coverageCovered / coverageTotal) * 100).toFixed(1) : '\u2014';
-    this.item.tooltip = `ALchemist \u2014 ${result.durationMs}ms\nCoverage: ${pct}%`;
+    this.setBaseTooltip(`ALchemist \u2014 ${result.durationMs}ms\nCoverage: ${pct}%`);
   }
 
   private setScratchResult(result: ExecutionResult): void {
@@ -71,7 +84,7 @@ export class StatusBarManager {
       this.item.backgroundColor = undefined;
     }
     this.item.color = undefined;
-    this.item.tooltip = `ALchemist \u2014 Scratch (${result.durationMs}ms)`;
+    this.setBaseTooltip(`ALchemist \u2014 Scratch (${result.durationMs}ms)`);
   }
 
   setTier(tier: 'regex' | 'precision' | 'fallback', scopeText?: string, tooltip?: string): void {
@@ -91,23 +104,29 @@ export class StatusBarManager {
    * Update the status bar tooltip to reflect the detected AL.Runner
    * protocol version. v2 → "AL.Runner protocol v2"; v1 (or undefined) →
    * "AL.Runner protocol v1 (upgrade for live updates)".
+   *
+   * The protocol line is composed on top of the current `baseTooltip`,
+   * which is preserved verbatim — no string-search heuristic.
    */
   setProtocolVersion(version: number | undefined): void {
     this.currentProtocolVersion = version;
     this.refreshTooltip();
   }
 
+  /**
+   * Set the run-state portion of the tooltip and immediately recompose
+   * the full tooltip (base + protocol line). Every state-changing setter
+   * — `setIdle`, `setRunning`, `setTestResult`, `setScratchResult` —
+   * routes through here so the protocol line is never lost.
+   */
+  private setBaseTooltip(text: string): void {
+    this.baseTooltip = text;
+    this.refreshTooltip();
+  }
+
   private refreshTooltip(): void {
-    // Refresh the main item's tooltip to append protocol version info.
-    const baseTooltip = this.item.tooltip?.toString() || 'ALchemist';
-    let fullTooltip = baseTooltip;
     const protocolLine = this.getProtocolTooltip();
-    if (baseTooltip && !baseTooltip.includes('protocol')) {
-      fullTooltip = baseTooltip + '\n' + protocolLine;
-    } else if (!baseTooltip.includes('protocol')) {
-      fullTooltip = protocolLine;
-    }
-    this.item.tooltip = fullTooltip;
+    this.item.tooltip = `${this.baseTooltip}\n${protocolLine}`;
   }
 
   private getProtocolTooltip(): string {

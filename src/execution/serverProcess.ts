@@ -32,19 +32,8 @@ export class ServerProcess {
   private readyResolve: (() => void) | undefined;
   /** True while dispatchWhenReady is awaiting readyPromise (prevents duplicate dispatchers). */
   private dispatching = false;
-  /** Last-observed protocol version from a runtests summary line. */
-  private detectedProtocolVersion: number | undefined;
 
   constructor(private readonly opts: ServerProcessOptions) {}
-
-  /**
-   * Last-observed protocol version from a runtests summary line.
-   * Returns undefined if no v2 summary has been seen (server is v1 or
-   * no runtests has completed yet).
-   */
-  getProtocolVersion(): number | undefined {
-    return this.detectedProtocolVersion;
-  }
 
   /**
    * Send a payload to the AL.Runner --server process.
@@ -193,12 +182,12 @@ export class ServerProcess {
     const req = this.inFlight!;
     if (isProtocolV2Line(obj)) {
       if (obj.type === 'summary' || obj.type === 'ack') {
-        // Capture protocol version before resolving, so downstream consumers
-        // can query it via getProtocolVersion().
-        if (obj.type === 'summary' && typeof obj.protocolVersion === 'number') {
-          this.detectedProtocolVersion = obj.protocolVersion;
-        }
-        // Terminal line — resolve.
+        // Terminal line — resolve. The summary's `protocolVersion` field
+        // (if present) flows downstream as part of the resolved object;
+        // ServerExecutionEngine.runTests reads it from there and surfaces
+        // it on `ExecutionResult.protocolVersion`. No probe API is kept
+        // on ServerProcess — the resolved-payload path is the single
+        // source of truth.
         this.inFlight = undefined;
         req.resolve(obj);
         this.pump();

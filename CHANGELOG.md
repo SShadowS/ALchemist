@@ -7,7 +7,7 @@
 - **AL.Runner protocol v2 streaming** — Test Explorer pass/fail marks now update **as each test completes**, not after the whole run finishes. Live progress via per-test events from a streaming NDJSON consumer (requires AL.Runner with protocol v2; older runners fall back transparently to v1 single-response mode).
 - **Clickable stack frames on failures** — Test failures in Test Results now carry structured stack frames (`vscode.TestMessageStackFrame[]`). Each user-code `.al` frame is clickable and jumps directly to the failing line. BC runtime / mock frames are dimmed via DAP-style `presentationHint`.
 - **Native VS Code coverage rendering** — Green/red gutter icons + Coverage View panel are now powered by `vscode.TestRun.addCoverage()`. The Run with Coverage profile lights up automatically on protocol v2.
-- **Per-test captured-value scoping** — `DecorationManager` now stores values per test. When the user selects a test in Test Explorer, only that test's captures display.
+- **Per-test captured-value scoping** — `DecorationManager` now stores values per test. The most-recent streaming test becomes the active test, so its captures are what shows in the editor at the end of a run (Option A heuristic — see Known limitations for the cursor-driven follow-up).
 - **Mid-run cancellation** — Click Stop in Test Explorer mid-run; tests-in-flight finish cooperatively, remaining tests are marked skipped, and the AL.Runner daemon stays warm for the next request.
 - **Per-test `testFilter`** — Right-click → Run on a single test now narrows the actual execution rather than re-running every test in the codeunit.
 - **Status bar protocol version** — Hover the AL.Runner status bar item to see whether you're on protocol v1 (upgrade for live updates) or v2.
@@ -25,6 +25,11 @@
 ### Requires
 
 - **AL.Runner with protocol v2 enabled** for streaming features (currently the fork branch `feat/alchemist-protocol-v1`; upstream PRs in flight). Older AL.Runner installations continue to work transparently in v1 mode (no live streaming, no native coverage UI, no clickable stack frames).
+
+### Known limitations (deferred to a follow-up release)
+
+- **Save-triggered runs use the v1 result-application path.** Live Test Explorer streaming, clickable stack frames, and native coverage UI activate on Test-Explorer-initiated runs only. Save-triggered runs continue to use the synchronous v1 result application — the test results are correct, but no live progress is reported and the inline-render filter on captured values still uses the legacy `sourceFile` path-match.
+- **Per-test capturedValues active selection is heuristic.** The most-recent streaming test becomes the active test (Option A); cursor-driven selection — so the displayed captures track which `[Test]` proc your cursor is in via `onDidChangeTextEditorSelection` — lands in a follow-up release.
 
 ## 0.4.0 (2026-04-25)
 

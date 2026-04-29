@@ -7,6 +7,7 @@ import { TestEvent } from '../execution/protocolV2Types';
 import { WorkspaceModel } from '../workspace/workspaceModel';
 import { AlApp } from '../workspace/types';
 import { toVsCodeCoverage, getDetails } from '../execution/coverageAdapter';
+import { v2ToV1Captured } from '../execution/captureValueAdapter';
 
 export interface TestTreeAppNode {
   app: AlApp;
@@ -53,11 +54,20 @@ export function groupTestItemsByApp(items: readonly { id: string }[]): Map<strin
  * Minimal interface T8 needs to expose for T10 wiring. Decoupled from
  * the concrete DecorationManager so the testing layer doesn't pull in
  * the editor-decoration module surface area.
+ *
+ * `setActiveTest` is used by `handleStreamingEvent` (Option A heuristic):
+ * the most-recent streaming test becomes the active test, so its captures
+ * win at the end of a run. Cursor-driven selection (Option B in the
+ * design notes) is a future polish — it would subscribe to
+ * `vscode.window.onDidChangeActiveTextEditor` /
+ * `onDidChangeTextEditorSelection` and pick the `[Test]` proc the
+ * cursor is in.
  */
 export interface TestControllerDecorationSink {
   applyResults(editor: vscode.TextEditor, result: ExecutionResult, wsPath: string): void;
   setCapturedValuesForTest(testName: string, values: CapturedValue[]): void;
   clearCapturedValueScopes(): void;
+  setActiveTest(testName: string | undefined): void;
 }
 
 export class AlchemistTestController {
@@ -155,8 +165,12 @@ export class AlchemistTestController {
    * `extension.ts:handleResult`. Streaming runs (Test Explorer) populate
    * the run via `runTests` directly and never invoke this method.
    *
-   * Deliberately unchanged in T8: T10 will revisit once the on-save path
-   * is wired through the same protocol-v2 streaming pipe.
+   * STATUS: deferred. The save-triggered path still uses the
+   * v1-result-application semantics (a synthetic TestRun is created here,
+   * passed/failed are emitted in one batch). Threading the save path
+   * through the streaming pipe — so it picks up clickable stack frames,
+   * native coverage, and Test-Explorer integration — is tracked as a
+   * follow-up; see CHANGELOG known limitations.
    */
   updateFromResult(result: ExecutionResult): void {
     if (result.mode !== 'test') { return; }
@@ -322,12 +336,22 @@ export class AlchemistTestController {
     }
 
     // Route per-test capturedValues to DecorationManager when set (T10 wiring).
-    if (event.capturedValues && event.capturedValues.length > 0 && this.decorationManager) {
-      // Translate v2 CapturedValue → v1 CapturedValue shape via the adapter.
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const dec = require('../editor/decorations') as typeof import('../editor/decorations');
-      const translated = event.capturedValues.map(dec.v2ToV1Captured);
-      this.decorationManager.setCapturedValuesForTest(event.name, translated);
+    if (this.decorationManager) {
+      if (event.capturedValues && event.capturedValues.length > 0) {
+        // Translate v2 CapturedValue → v1 CapturedValue shape via the adapter.
+        const translated = event.capturedValues.map(v2ToV1Captured);
+        this.decorationManager.setCapturedValuesForTest(event.name, translated);
+      }
+      // Option A active-test heuristic: the most-recent streaming test
+      // becomes the active test. After the run, the LAST test's captures
+      // are what shows in the editor — usually the user's focus. We fire
+      // this for every streaming `test` event regardless of whether
+      // captures were attached, so the active scope tracks emission order
+      // even when a test had nothing to capture.
+      // Option B (cursor-driven selection — track the [Test] proc the
+      // cursor is in via onDidChangeTextEditorSelection) is the eventual
+      // UX; it lands in a follow-up release.
+      this.decorationManager.setActiveTest(event.name);
     }
   }
 

@@ -96,6 +96,29 @@ class MockTextEditorDecorationType {
   dispose() { this.disposed = true; }
 }
 
+/**
+ * Spy-friendly StatusBarItem. Records the most-recent text/tooltip/command
+ * assignments so tests can assert on observable side-effects without
+ * driving the real VS Code window. show()/hide() are no-ops; dispose()
+ * sets a flag so leak-checks can verify the manager cleaned up.
+ */
+class MockStatusBarItem {
+  constructor(alignment, priority) {
+    this.alignment = alignment;
+    this.priority = priority;
+    this.text = '';
+    this.tooltip = undefined;
+    this.command = undefined;
+    this.color = undefined;
+    this.backgroundColor = undefined;
+    this.shown = false;
+    this.disposed = false;
+  }
+  show() { this.shown = true; }
+  hide() { this.shown = false; }
+  dispose() { this.disposed = true; }
+}
+
 module.exports = {
   workspace: {
     openTextDocument: async () => ({}),
@@ -114,6 +137,7 @@ module.exports = {
     activeTextEditor: undefined,
     visibleTextEditors: [],
     createTextEditorDecorationType: (options) => new MockTextEditorDecorationType(options),
+    createStatusBarItem: (alignment, priority) => new MockStatusBarItem(alignment, priority),
   },
   commands: {
     executeCommand: async () => {},
@@ -122,6 +146,7 @@ module.exports = {
     createTestController: (id, label) => createMockTestController(id, label),
   },
   TestRunProfileKind: { Run: 1, Debug: 2, Coverage: 3 },
+  StatusBarAlignment: { Left: 1, Right: 2 },
   TestMessage: class TestMessage {
     constructor(message) { this.message = message; }
   },

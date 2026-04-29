@@ -582,6 +582,8 @@ suite('TestController streaming (v2)', () => {
       clearCapturedValueScopes: () => dmCalls.push({ method: 'clear', args: [] }),
       setCapturedValuesForTest: (name: string, values: any[]) =>
         dmCalls.push({ method: 'set', args: [name, values] }),
+      setActiveTest: (name: string | undefined) =>
+        dmCalls.push({ method: 'setActive', args: [name] }),
     };
 
     const engine = new StubEngine(
@@ -668,5 +670,132 @@ suite('TestController streaming (v2)', () => {
     // Test should still pass normally.
     assert.strictEqual(run.passedCalls.length, 1);
     assert.strictEqual(run.passedCalls[0].item.label, 'ComputeDoubles');
+  });
+
+  // Option A heuristic: setActiveTest fires on every streaming `test` event
+  // (matched to a known test item) so the most-recent test becomes the
+  // visible scope at run end. The test drives multiple events and asserts
+  // call order + that the last call wins. Only events whose `name` matches
+  // an item in the discovered tree drive setActive — phantom tests are
+  // dropped at the same gate that drops them from run.passed/failed.
+  test('setActiveTest fires on each streaming event; last test wins (Option A)', async () => {
+    const dmCalls: { method: string; args: any[] }[] = [];
+    const fakeDm: any = {
+      clearCapturedValueScopes: () => dmCalls.push({ method: 'clear', args: [] }),
+      setCapturedValuesForTest: (name: string, values: any[]) =>
+        dmCalls.push({ method: 'set', args: [name, values] }),
+      setActiveTest: (name: string | undefined) =>
+        dmCalls.push({ method: 'setActive', args: [name] }),
+    };
+
+    // Use known test item names from the multi-app fixture
+    // (ComputeDoubles, ComputeZero). Drive ComputeDoubles first, then
+    // ComputeZero (with captures, and with no captures to prove
+    // setActive fires regardless of capture presence), then
+    // ComputeDoubles again to prove repeat-name events also drive
+    // setActive (LRU-style).
+    const events: TestEvent[] = [
+      { type: 'test', name: 'ComputeDoubles', status: 'pass', durationMs: 1 },
+      {
+        type: 'test',
+        name: 'ComputeZero',
+        status: 'fail',
+        durationMs: 2,
+        message: 'boom',
+        capturedValues: [
+          { scopeName: 'local', objectName: 'Test.al', variableName: 'x', value: '0', statementId: 0 },
+        ],
+      },
+      { type: 'test', name: 'ComputeDoubles', status: 'pass', durationMs: 3 },
+    ];
+    // Two apps in the fixture; events fire on the first call only.
+    const engine = new StubEngine([events, []], [makeEmpty(), makeEmpty()]);
+    const { controller, mockController } = await makeController(engine);
+    controller.setDecorationManager(fakeDm);
+
+    const tokenSrc = new vscode.CancellationTokenSource();
+    await triggerRun(mockController, new vscode.TestRunRequest(), tokenSrc.token);
+
+    // Expect three setActive calls — one per event — in declared order.
+    const setActiveCalls = dmCalls.filter(c => c.method === 'setActive');
+    assert.strictEqual(setActiveCalls.length, 3,
+      `expected 3 setActive calls (one per streaming test event); got ${setActiveCalls.length}`);
+    assert.strictEqual(setActiveCalls[0].args[0], 'ComputeDoubles');
+    assert.strictEqual(setActiveCalls[1].args[0], 'ComputeZero');
+    assert.strictEqual(setActiveCalls[2].args[0], 'ComputeDoubles');
+
+    // The last call MUST be for the most-recent test — Option A's core
+    // guarantee: at run end, the most-recent streaming test is the
+    // active scope so its captures are what shows.
+    const lastSetActive = setActiveCalls[setActiveCalls.length - 1];
+    assert.strictEqual(lastSetActive.args[0], 'ComputeDoubles',
+      'last setActiveTest call must be for the third (most-recent) test event');
+
+    // Verify clear was called once at run start (resets activeTestName).
+    const clearCalls = dmCalls.filter(c => c.method === 'clear');
+    assert.strictEqual(clearCalls.length, 1,
+      'clearCapturedValueScopes should fire exactly once per run');
+    // And clear preceded all setActive calls.
+    const clearIdx = dmCalls.findIndex(c => c.method === 'clear');
+    const firstSetActiveIdx = dmCalls.findIndex(c => c.method === 'setActive');
+    assert.ok(clearIdx < firstSetActiveIdx,
+      'clear must fire before any setActiveTest call');
+  });
+
+  // Defensive: an event for a name not in the discovered tree must not
+  // drive setActiveTest (the same gate that drops it from run.passed).
+  test('streaming event for unknown test name does NOT fire setActiveTest', async () => {
+    const dmCalls: { method: string; args: any[] }[] = [];
+    const fakeDm: any = {
+      clearCapturedValueScopes: () => dmCalls.push({ method: 'clear', args: [] }),
+      setCapturedValuesForTest: (name: string, values: any[]) =>
+        dmCalls.push({ method: 'set', args: [name, values] }),
+      setActiveTest: (name: string | undefined) =>
+        dmCalls.push({ method: 'setActive', args: [name] }),
+    };
+
+    const events: TestEvent[] = [
+      { type: 'test', name: 'NotInTree', status: 'pass', durationMs: 1 },
+      { type: 'test', name: 'ComputeDoubles', status: 'pass', durationMs: 2 },
+    ];
+    const engine = new StubEngine([events, []], [makeEmpty(), makeEmpty()]);
+    const { controller, mockController } = await makeController(engine);
+    controller.setDecorationManager(fakeDm);
+
+    const tokenSrc = new vscode.CancellationTokenSource();
+    await triggerRun(mockController, new vscode.TestRunRequest(), tokenSrc.token);
+
+    const setActiveCalls = dmCalls.filter(c => c.method === 'setActive');
+    assert.strictEqual(setActiveCalls.length, 1,
+      'only the recognised test should drive setActiveTest');
+    assert.strictEqual(setActiveCalls[0].args[0], 'ComputeDoubles');
+  });
+
+  test('setActiveTest is NOT fired on non-test events (no spurious activations)', async () => {
+    // Defensive: handleStreamingEvent early-returns on event.type !== 'test'.
+    // Ensure that contract holds — only 'test' events should drive setActive.
+    const dmCalls: { method: string; args: any[] }[] = [];
+    const fakeDm: any = {
+      clearCapturedValueScopes: () => dmCalls.push({ method: 'clear', args: [] }),
+      setCapturedValuesForTest: (name: string, values: any[]) =>
+        dmCalls.push({ method: 'set', args: [name, values] }),
+      setActiveTest: (name: string | undefined) =>
+        dmCalls.push({ method: 'setActive', args: [name] }),
+    };
+
+    const events: TestEvent[] = [
+      { type: 'test', name: 'ComputeDoubles', status: 'pass', durationMs: 1 },
+    ];
+    const engine = new StubEngine([events, []], [makeEmpty(), makeEmpty()]);
+    const { controller, mockController } = await makeController(engine);
+    controller.setDecorationManager(fakeDm);
+
+    const tokenSrc = new vscode.CancellationTokenSource();
+    await triggerRun(mockController, new vscode.TestRunRequest(), tokenSrc.token);
+
+    const setActiveCalls = dmCalls.filter(c => c.method === 'setActive');
+    assert.strictEqual(setActiveCalls.length, 1,
+      'exactly one setActive call expected for the single test event');
+    assert.strictEqual(setActiveCalls[0].args[0], 'ComputeDoubles');
   });
 });

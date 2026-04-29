@@ -1,33 +1,12 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { ExecutionResult, CoverageEntry, CapturedValue } from '../runner/outputParser';
-import { CapturedValue as CapturedValueV2 } from '../execution/protocolV2Types';
+import { v2ToV1Captured } from '../execution/captureValueAdapter';
 
-/**
- * Translate a v2 CapturedValue (objectName + JSON-shaped value) into the v1
- * shape the rest of the editor pipeline still expects.
- *
- * Lossy notes:
- * - v2's `objectName` is the AL object identifier (e.g. "Codeunit MyTest"),
- *   while v1's `sourceFile` was a workspace-relative file path. The
- *   downstream `applyInlineCapturedValues` filter uses `sourceFile` to
- *   match the active editor; with `objectName` substituted it will
- *   typically not match and inline rendering is skipped. Per-test wiring
- *   from TestController (T10) replaces this best-effort flatten with
- *   exact per-test scope, so the loss is acceptable as a transitional
- *   stopgap.
- * - v2's `value` is `unknown` (any JSON); we stringify non-string values
- *   so consumers see a printable representation.
- */
-export function v2ToV1Captured(v2: CapturedValueV2): CapturedValue {
-  return {
-    scopeName: v2.scopeName,
-    sourceFile: v2.objectName ?? '',
-    variableName: v2.variableName,
-    value: typeof v2.value === 'string' ? v2.value : JSON.stringify(v2.value),
-    statementId: v2.statementId,
-  };
-}
+// Re-export so legacy importers (`import { v2ToV1Captured } from '../editor/decorations'`)
+// keep compiling. New code should import from `../execution/captureValueAdapter`
+// directly — that's the canonical location and carries the full lossiness JSDoc.
+export { v2ToV1Captured };
 
 /** Internal sentinel for the union bucket populated by v1 applyResults. */
 const LEGACY_SCOPE_KEY = '__legacy__';
@@ -208,8 +187,16 @@ export class DecorationManager {
     // - v2 (protocolVersion === 2): per-test arrays live on result.tests[i].capturedValues
     //   and use the v2 shape (objectName instead of sourceFile, value: unknown).
     //   We flatten + translate to v1 shape so applyInlineCapturedValues and the
-    //   hover union path stay backward-compatible. T10 wires per-test scoping
-    //   via setCapturedValuesForTest, replacing this stopgap.
+    //   hover union path stay backward-compatible.
+    //
+    // STATUS: T10 wired per-test scoping (`setCapturedValuesForTest` +
+    // `setActiveTest`), but this LEGACY_SCOPE_KEY union path is still the
+    // active code on the save-triggered handler in `extension.ts:handleResult`,
+    // which calls `applyResults` directly without driving streaming events.
+    // The Test-Explorer-initiated path now bypasses this branch via
+    // `TestController.handleStreamingEvent`. The save-triggered path is
+    // deferred to a follow-up — see CHANGELOG known limitations
+    // ("Save-triggered runs use the v1 result-application path").
     let captured: CapturedValue[];
     if (result.protocolVersion === 2) {
       captured = result.tests.flatMap(t => (t.capturedValues ?? []).map(v2ToV1Captured));
