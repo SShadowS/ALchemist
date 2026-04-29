@@ -72,9 +72,17 @@ export interface TestControllerDecorationSink {
 
 export class AlchemistTestController {
   private readonly controller: vscode.TestController;
-  private readonly testItems = new Map<string, vscode.TestItem>();
   private readonly testItemsById = new Map<string, vscode.TestItem>();
   private decorationManager?: TestControllerDecorationSink;
+
+  /**
+   * Owning-app guid for the test currently being processed. Set in
+   * `runTests`'s per-app loop and (transiently) in `updateFromResult`.
+   * Used by `resolveTestItemByName` to disambiguate between same-named
+   * tests living in different apps. Undefined outside a run; the
+   * resolver then falls back to a first-match search across all items.
+   */
+  private currentAppId: string | undefined;
 
   /**
    * Item ids reported (passed/failed/errored) during the current run.
@@ -84,6 +92,38 @@ export class AlchemistTestController {
    * `applyV1Result` (v1 fallback).
    */
   private reportedItemIds = new Set<string>();
+
+  /**
+   * Resolve a TestItem by procedure name in the context of the currently
+   * running app. Used by `handleStreamingEvent`, `applyV1Result`, and
+   * `updateFromResult` to map a v2 TestEvent (which carries only the
+   * procedure name, no app context) back to the compound-id TestItem.
+   *
+   * For multi-app workspaces with same-named tests across apps, the
+   * appId scope avoids collisions. When no run is active
+   * (`currentAppId` undefined), the lookup walks `testItemsById` and
+   * returns the first test with a matching label — preserving the
+   * single-app behaviour at the cost of the documented collision risk
+   * in legacy save paths.
+   */
+  private resolveTestItemByName(testName: string): vscode.TestItem | undefined {
+    if (this.currentAppId) {
+      const prefix = `test-${this.currentAppId}-`;
+      for (const [id, item] of this.testItemsById) {
+        if (id.startsWith(prefix) && item.label === testName) {
+          return item;
+        }
+      }
+      return undefined;
+    }
+    // Fallback: any app, first match.
+    for (const item of this.testItemsById.values()) {
+      if (item.id.startsWith('test-') && item.label === testName) {
+        return item;
+      }
+    }
+    return undefined;
+  }
 
   constructor(
     private readonly getEngine: () => ExecutionEngine | undefined,
@@ -146,7 +186,7 @@ export class AlchemistTestController {
 
     // Clear existing items
     this.controller.items.replace([]);
-    this.testItems.clear();
+    this.testItemsById.clear();
 
     for (const codeunit of codeunits) {
       const codeunitItem = this.controller.createTestItem(
@@ -163,7 +203,13 @@ export class AlchemistTestController {
         );
         testItem.range = new vscode.Range(test.line, 0, test.line, 0);
         codeunitItem.children.add(testItem);
-        this.testItems.set(test.name, testItem);
+        // Legacy single-folder path predates compound app-scoped ids.
+        // testItemsById is keyed by the legacy `test-<codeunitId>-<name>`
+        // shape here; the resolver's app-scoped prefix won't match these
+        // entries (no app guid in the id), so this path effectively only
+        // works when currentAppId is undefined and the fallback walk
+        // matches by label.
+        this.testItemsById.set(`test-${codeunit.codeunitId}-${test.name}`, testItem);
       }
 
       this.controller.items.add(codeunitItem);
@@ -182,31 +228,42 @@ export class AlchemistTestController {
    * native coverage, and Test-Explorer integration — is tracked as a
    * follow-up; see CHANGELOG known limitations.
    */
-  updateFromResult(result: ExecutionResult): void {
+  updateFromResult(result: ExecutionResult, appId?: string): void {
     if (result.mode !== 'test') { return; }
 
-    const run = this.controller.createTestRun(new vscode.TestRunRequest());
+    // Scope test-name resolution to the caller-supplied app for the
+    // duration of this method. If the caller doesn't have app context
+    // (single-folder workspace, scratch path, etc.), `currentAppId`
+    // stays whatever it was — typically undefined — and the resolver
+    // falls back to a label-only search across all known items.
+    const prevAppId = this.currentAppId;
+    this.currentAppId = appId ?? prevAppId;
+    try {
+      const run = this.controller.createTestRun(new vscode.TestRunRequest());
 
-    for (const testResult of result.tests) {
-      const item = this.testItems.get(testResult.name);
-      if (!item) { continue; }
+      for (const testResult of result.tests) {
+        const item = this.resolveTestItemByName(testResult.name);
+        if (!item) { continue; }
 
-      if (testResult.status === 'passed') {
-        run.passed(item, testResult.durationMs);
-      } else if (testResult.status === 'failed') {
-        const message = new vscode.TestMessage(testResult.message || 'Test failed');
-        if (testResult.alSourceLine && item.uri) {
-          const col = testResult.alSourceColumn ? testResult.alSourceColumn - 1 : 0;
-          message.location = new vscode.Location(item.uri, new vscode.Position(testResult.alSourceLine - 1, col));
+        if (testResult.status === 'passed') {
+          run.passed(item, testResult.durationMs);
+        } else if (testResult.status === 'failed') {
+          const message = new vscode.TestMessage(testResult.message || 'Test failed');
+          if (testResult.alSourceLine && item.uri) {
+            const col = testResult.alSourceColumn ? testResult.alSourceColumn - 1 : 0;
+            message.location = new vscode.Location(item.uri, new vscode.Position(testResult.alSourceLine - 1, col));
+          }
+          run.failed(item, message, testResult.durationMs);
+        } else {
+          const message = new vscode.TestMessage(testResult.message || 'Test errored');
+          run.errored(item, message, testResult.durationMs);
         }
-        run.failed(item, message, testResult.durationMs);
-      } else {
-        const message = new vscode.TestMessage(testResult.message || 'Test errored');
-        run.errored(item, message, testResult.durationMs);
       }
-    }
 
-    run.end();
+      run.end();
+    } finally {
+      this.currentAppId = prevAppId;
+    }
   }
 
   private async runTests(request: vscode.TestRunRequest, token: vscode.CancellationToken): Promise<void> {
@@ -264,9 +321,15 @@ export class AlchemistTestController {
       // launching new runtests invocations after the user clicked
       // cancel. The current iteration's await may still be in flight,
       // but no new app is started.
+      //
+      // currentAppId is set per-iteration so handleStreamingEvent and
+      // applyV1Result can scope name lookups to the running app — same
+      // bare procedure name across two apps must resolve to the right
+      // TestItem.
       const appsToRun = this.resolveAppsForRequest(request);
       for (const app of appsToRun) {
         if (token.isCancellationRequested) { break; }
+        this.currentAppId = app.id;
         const depPaths = this.model.getDependencies(app.id).map(a => a.path);
         const sourcePaths = depPaths.length > 0 ? depPaths : [app.path];
         const result = await engine.runTests(
@@ -277,10 +340,12 @@ export class AlchemistTestController {
         this.onResult?.(result);
       }
     } finally {
-      // Order is load-bearing: flip runDone first so any cancel listener
-      // that fires between here and dispose() becomes a no-op. Then
-      // dispose, then mark unreported items as skipped (which only
-      // matters when cancellation actually happened), then end the run.
+      // Order is load-bearing: clear currentAppId, flip runDone so any
+      // cancel listener that fires between here and dispose() becomes a
+      // no-op. Then dispose, then mark unreported items as skipped
+      // (which only matters when cancellation actually happened), then
+      // end the run.
+      this.currentAppId = undefined;
       runDone = true;
       cancelSub.dispose();
       if (token.isCancellationRequested) {
@@ -323,13 +388,13 @@ export class AlchemistTestController {
 
   /**
    * Translates one v2 TestEvent into the appropriate run.passed/failed/
-   * errored call. Items not present in `testItems` are silently dropped
-   * — this typically means the discovered tree is stale; the next
-   * refresh will re-include them.
+   * errored call. Items unresolvable by the current name+app context
+   * are silently dropped — this typically means the discovered tree is
+   * stale; the next refresh will re-include them.
    */
   private handleStreamingEvent(run: vscode.TestRun, event: TestEvent): void {
     if (event.type !== 'test') { return; }
-    const item = this.testItems.get(event.name);
+    const item = this.resolveTestItemByName(event.name);
     if (!item) { return; }
     // Track the item id BEFORE dispatching so the cancel-cleanup path
     // (C1) doesn't double-report a still-running event as skipped.
@@ -427,15 +492,13 @@ export class AlchemistTestController {
     // handleStreamingEvent. The v1 fallback re-runs the result.tests[]
     // walk for non-v2 servers.
     //
-    // NOTE: `applyV1Result` fires once per app iteration. In a
-    // multi-app workspace this can re-emit run.passed/failed for the
-    // same TestItem if test names collide across apps (`testItems` is
-    // keyed by bare name, not the compound id). Acceptable today
-    // because v1 servers don't run multi-app workspaces in production
-    // — the v1-fallback test (`v1 fallback: protocolVersion undefined
-    // → applyV1Result populates run.passed/failed`) explicitly asserts
-    // this duplication. Task 10's name-disambiguation work would
-    // address it if needed; until then the documented behaviour holds.
+    // applyV1Result fires once per app iteration. Resolution of a
+    // result.tests[].name to a TestItem is now scoped to
+    // `currentAppId` (set by the runTests loop), so a v1 summary
+    // produced by app A only emits run.passed/failed for app-A test
+    // items even when test names collide with app B. The previous
+    // bare-name lookup duplicated emissions across apps; that
+    // duplication is fixed.
     if (result.protocolVersion !== 2) {
       this.applyV1Result(run, result);
     }
@@ -443,7 +506,7 @@ export class AlchemistTestController {
 
   private applyV1Result(run: vscode.TestRun, result: ExecutionResult): void {
     for (const t of result.tests) {
-      const item = this.testItems.get(t.name);
+      const item = this.resolveTestItemByName(t.name);
       if (!item) { continue; }
       // C1: track this id as reported so cancel-cleanup doesn't
       // additionally mark it skipped.
@@ -477,7 +540,6 @@ export class AlchemistTestController {
   async refreshTestsFromModel(model: WorkspaceModel): Promise<void> {
     const tree = buildTestTree(model);
     this.controller.items.replace([]);
-    this.testItems.clear();
     this.testItemsById.clear();
     for (const node of tree) {
       const appItem = this.controller.createTestItem(
@@ -499,11 +561,10 @@ export class AlchemistTestController {
           );
           testItem.range = new vscode.Range(test.line, 0, test.line, 0);
           codeunitItem.children.add(testItem);
-          // Maintain two indices:
-          // - testItems (bare name): used by legacy updateFromResult; will be removed
-          //   once execution paths carry app context (Task 10+).
-          // - testItemsById (compound id): canonical key, no cross-app collision.
-          this.testItems.set(test.name, testItem);
+          // testItemsById (compound id) is the canonical index. Name
+          // resolution at run-time goes through resolveTestItemByName,
+          // which scopes lookups to the currently-running app — no
+          // cross-app collision.
           this.testItemsById.set(`test-${node.app.id}-${codeunit.codeunitId}-${test.name}`, testItem);
         }
         appItem.children.add(codeunitItem);

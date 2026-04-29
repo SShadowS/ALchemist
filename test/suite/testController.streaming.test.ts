@@ -129,9 +129,11 @@ suite('TestController streaming (v2)', () => {
       { type: 'test', name: 'ComputeDoubles', status: 'pass', durationMs: 12 },
       { type: 'test', name: 'ComputeZero', status: 'fail', durationMs: 7, message: 'expected 0 got 1' },
     ];
-    // multi-app fixture has 2 apps; events fire only on the first call
-    // and the second app summary is empty, so we count exactly one of each.
-    const engine = new StubEngine([events, []], [makeEmpty(), makeEmpty()]);
+    // multi-app fixture order is [MainApp, MainApp.Test] (alphabetical).
+    // Tests live only in MainApp.Test (the second app), so events must
+    // fire during the second iteration when currentAppId matches the
+    // test-owning app — otherwise resolveTestItemByName won't find them.
+    const engine = new StubEngine([[], events], [makeEmpty(), makeEmpty()]);
     const { mockController } = await makeController(engine);
 
     const tokenSrc = new vscode.CancellationTokenSource();
@@ -190,7 +192,8 @@ suite('TestController streaming (v2)', () => {
         ],
       },
     ];
-    const engine = new StubEngine([events, []], [makeEmpty(), makeEmpty()]);
+    // Events on the test-owning app's iteration (second slot — see ordering note above).
+    const engine = new StubEngine([[], events], [makeEmpty(), makeEmpty()]);
     const { mockController } = await makeController(engine);
 
     const tokenSrc = new vscode.CancellationTokenSource();
@@ -221,7 +224,7 @@ suite('TestController streaming (v2)', () => {
         alSourceColumn: 9,
       },
     ];
-    const engine = new StubEngine([events, []], [makeEmpty(), makeEmpty()]);
+    const engine = new StubEngine([[], events], [makeEmpty(), makeEmpty()]);
     const { mockController } = await makeController(engine);
     const tokenSrc = new vscode.CancellationTokenSource();
     await triggerRun(mockController, new vscode.TestRunRequest(), tokenSrc.token);
@@ -302,11 +305,15 @@ suite('TestController streaming (v2)', () => {
     await triggerRun(mockController, new vscode.TestRunRequest(), tokenSrc.token);
     const run = mockController.__lastTestRun;
 
-    // Both apps run; only the test app contributes test items in fixture,
-    // but applyV1Result is called for both — the second pass simply
-    // re-applies. Two passed + two failed total.
-    assert.strictEqual(run.passedCalls.length, 2, 'two passes (one per app summary call)');
-    assert.strictEqual(run.failedCalls.length, 2, 'two failures (one per app summary call)');
+    // Both apps run; only MainApp.Test contributes test items in the
+    // fixture. applyV1Result resolves names through the app-scoped
+    // resolveTestItemByName, so the MainApp iteration finds nothing
+    // and only the MainApp.Test iteration emits run.passed/failed.
+    // Net: exactly one passed + one failed (the previous bare-name
+    // implementation duplicated across iterations; that duplication is
+    // fixed by Plan E2.1 T5).
+    assert.strictEqual(run.passedCalls.length, 1, 'one pass — only the test-owning app contributes');
+    assert.strictEqual(run.failedCalls.length, 1, 'one failure — only the test-owning app contributes');
 
     // Verify TestMessage.location was built from alSourceLine + item.uri.
     const failMsg: any = run.failedCalls[0].message;
@@ -320,7 +327,7 @@ suite('TestController streaming (v2)', () => {
       { type: 'test', name: 'NotInTree', status: 'pass', durationMs: 1 },
       { type: 'test', name: 'ComputeDoubles', status: 'pass', durationMs: 5 },
     ];
-    const engine = new StubEngine([events, []], [makeEmpty(), makeEmpty()]);
+    const engine = new StubEngine([[], events], [makeEmpty(), makeEmpty()]);
     const { mockController } = await makeController(engine);
     const tokenSrc = new vscode.CancellationTokenSource();
     await triggerRun(mockController, new vscode.TestRunRequest(), tokenSrc.token);
@@ -335,7 +342,7 @@ suite('TestController streaming (v2)', () => {
     const events: TestEvent[] = [
       { type: 'test', name: 'ComputeZero', status: 'error', durationMs: 4, message: 'compile error' },
     ];
-    const engine = new StubEngine([events, []], [makeEmpty(), makeEmpty()]);
+    const engine = new StubEngine([[], events], [makeEmpty(), makeEmpty()]);
     const { mockController } = await makeController(engine);
     const tokenSrc = new vscode.CancellationTokenSource();
     await triggerRun(mockController, new vscode.TestRunRequest(), tokenSrc.token);
@@ -441,14 +448,16 @@ suite('TestController streaming (v2)', () => {
   // should be reported as `skipped` (spec §471). Without the cleanup
   // path they'd stay stuck in the running spinner.
   test('cancelled run marks unreported test items as skipped (C1)', async () => {
-    // First app emits an event for ComputeDoubles only; cancel fires
-    // during the first call so the second app never runs. ComputeZero
-    // (in the same app) and any items in the second app must be marked
-    // skipped.
+    // The test-owning app (MainApp.Test) is the second iteration; the
+    // first iteration (MainApp) has no test items. Events fire during
+    // iteration 2 — that's when currentAppId scopes to MainApp.Test
+    // and resolveTestItemByName can find ComputeDoubles. Cancel fires
+    // after iteration 2 runs, leaving ComputeZero unreported so the
+    // cancel-cleanup path marks it as skipped.
     const events: TestEvent[] = [
       { type: 'test', name: 'ComputeDoubles', status: 'pass', durationMs: 4 },
     ];
-    const engine = new StubEngine([events, []], [makeEmpty(), makeEmpty()]);
+    const engine = new StubEngine([[], events], [makeEmpty(), makeEmpty()]);
     const { mockController } = await makeController(engine);
     const tokenSrc = new vscode.CancellationTokenSource();
 
@@ -457,7 +466,10 @@ suite('TestController streaming (v2)', () => {
       // Drive the events first, *then* cancel. That mirrors the realistic
       // sequence: some events arrive, user clicks cancel, summary lands.
       const result = await originalRunTests(req, onTest);
-      if (engine.callCount === 1) {
+      // Cancel after the test-owning iteration completes (callCount===2)
+      // so the cleanup path observes the cancellation and reports the
+      // remaining unreported items as skipped.
+      if (engine.callCount === 2) {
         tokenSrc.cancel();
       }
       return result;
@@ -512,7 +524,7 @@ suite('TestController streaming (v2)', () => {
           alSourceColumn: 9,
         },
       ];
-      const engine = new StubEngine([events, []], [makeEmpty(), makeEmpty()]);
+      const engine = new StubEngine([[], events], [makeEmpty(), makeEmpty()]);
       const { mockController } = await makeController(engine);
       const tokenSrc = new vscode.CancellationTokenSource();
       await triggerRun(mockController, new vscode.TestRunRequest(), tokenSrc.token);
@@ -541,9 +553,12 @@ suite('TestController streaming (v2)', () => {
       { type: 'test', name: 'ComputeZero', status: 'fail', durationMs: 2, message: 'second-run failure' },
     ];
     // 4 invocations total (2 apps × 2 runs); the StubEngine clamps so
-    // we provide enough batches and summaries.
+    // we provide enough batches and summaries. Each pair of slots maps
+    // to one run: slot 0=MainApp, slot 1=MainApp.Test (test-owning).
+    // Events fire only during the test-owning iteration so
+    // resolveTestItemByName can match via currentAppId.
     const engine = new StubEngine(
-      [events1, [], events2, []],
+      [[], events1, [], events2],
       [makeEmpty(), makeEmpty(), makeEmpty(), makeEmpty()],
     );
     const { mockController } = await makeController(engine);
@@ -588,6 +603,7 @@ suite('TestController streaming (v2)', () => {
 
     const engine = new StubEngine(
       [
+        [],
         [
           {
             type: 'test',
@@ -605,7 +621,6 @@ suite('TestController streaming (v2)', () => {
             ],
           },
         ],
-        [],
       ],
       [makeEmpty(), makeEmpty()],
     );
@@ -635,6 +650,7 @@ suite('TestController streaming (v2)', () => {
   test('handleStreamingEvent skips DecorationManager when manager not set', async () => {
     const engine = new StubEngine(
       [
+        [],
         [
           {
             type: 'test',
@@ -652,7 +668,6 @@ suite('TestController streaming (v2)', () => {
             ],
           },
         ],
-        [],
       ],
       [makeEmpty(), makeEmpty()],
     );
@@ -708,8 +723,10 @@ suite('TestController streaming (v2)', () => {
       },
       { type: 'test', name: 'ComputeDoubles', status: 'pass', durationMs: 3 },
     ];
-    // Two apps in the fixture; events fire on the first call only.
-    const engine = new StubEngine([events, []], [makeEmpty(), makeEmpty()]);
+    // Two apps in the fixture; events fire on the test-owning app's
+    // iteration (slot 1, MainApp.Test) so resolveTestItemByName can
+    // find them via currentAppId scope.
+    const engine = new StubEngine([[], events], [makeEmpty(), makeEmpty()]);
     const { controller, mockController } = await makeController(engine);
     controller.setDecorationManager(fakeDm);
 
@@ -758,7 +775,8 @@ suite('TestController streaming (v2)', () => {
       { type: 'test', name: 'NotInTree', status: 'pass', durationMs: 1 },
       { type: 'test', name: 'ComputeDoubles', status: 'pass', durationMs: 2 },
     ];
-    const engine = new StubEngine([events, []], [makeEmpty(), makeEmpty()]);
+    // Events on the test-owning app's iteration (slot 1).
+    const engine = new StubEngine([[], events], [makeEmpty(), makeEmpty()]);
     const { controller, mockController } = await makeController(engine);
     controller.setDecorationManager(fakeDm);
 
@@ -786,7 +804,8 @@ suite('TestController streaming (v2)', () => {
     const events: TestEvent[] = [
       { type: 'test', name: 'ComputeDoubles', status: 'pass', durationMs: 1 },
     ];
-    const engine = new StubEngine([events, []], [makeEmpty(), makeEmpty()]);
+    // Events on the test-owning app's iteration (slot 1).
+    const engine = new StubEngine([[], events], [makeEmpty(), makeEmpty()]);
     const { controller, mockController } = await makeController(engine);
     controller.setDecorationManager(fakeDm);
 

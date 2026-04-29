@@ -193,12 +193,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     lastExecutionResult = result;
 
     const editor = vscode.window.activeTextEditor;
+    let resultAppId: string | undefined;
     if (editor) {
-      const wsPath = workspaceModel.getAppContaining(editor.document.uri.fsPath)?.path ?? path.dirname(editor.document.uri.fsPath);
+      const containingApp = workspaceModel.getAppContaining(editor.document.uri.fsPath);
+      const wsPath = containingApp?.path ?? path.dirname(editor.document.uri.fsPath);
       decorationManager.applyResults(editor, result, wsPath);
+      resultAppId = containingApp?.id;
     }
 
-    testController.updateFromResult(result);
+    // resultAppId is best-effort: it's the app owning the active editor's
+    // file at the moment handleResult runs. For save-triggered runs that
+    // matches the app the user just edited; for scratch executes the
+    // file may not belong to any app (resultAppId stays undefined) and
+    // the resolver falls back to label-only matching.
+    testController.updateFromResult(result, resultAppId);
 
     if (result.iterations && result.iterations.length > 0) {
       const editorFile = vscode.window.activeTextEditor?.document.uri.fsPath;
