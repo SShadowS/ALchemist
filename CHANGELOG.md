@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.4 (2026-04-29)
+
+### Fixes
+
+- **Inline captures and gutter coverage now match against absolute paths** (the wire shape AL.Runner `--server` actually emits). `findCoverageForFile` previously matched only relative paths (`entryPath === relativePath`) or a suffix-endsWith comparison that compared backslashes against forward slashes — so absolute fwd-slash paths from `--server` (e.g. `C:/Users/.../CU1.al`) fell through both branches and the function returned undefined. Every render path that uses `findCoverageForFile` (inline captures, gutter SVGs, dim-uncovered) silently no-op'd on v2 results in the user's runtime, even though earlier layer tests passed (they used relative-path fixtures that masked the bug). The matcher now resolves both sides to absolute, normalized, lowercase paths and compares.
+
+### Observability
+
+- The output channel header now stamps the running extension version and protocol version on every result: `━━━ ALchemist v0.5.4 · protocol v2 ━━━━━━...`. A one-time `ALchemist v0.5.4 loaded` line also lands when the channel is created. Saves "is this build picking up my fix?" debug cycles.
+
+### Tests
+
+- Added unit test `v2 applyResults with ABSOLUTE-path coverage + captures (server emits absolute paths) renders inline captures` that uses absolute fwd-slash paths matching the wire shape from `scripts/drive-server.ts`.
+- Added integration test through real VS Code APIs (`@vscode/test-electron`) `v2 result with ABSOLUTE-path coverage entries (real --server wire shape) renders inline captures` — same shape, real `Document.lineAt`, real path resolution.
+- Added end-to-end smoke test `test/smoke/runtimeSmoke.smoke.ts` that activates the real extension against the local ALProject4 + AL.Runner fork build, drives the engine, and asserts captures + coverageV2 + decoration manager state. Runs via `npm run test:smoke`. Skips when local paths missing.
+- Added test seam in `extension.activate()` (`TestHooks` returned only when `ALCHEMIST_TEST_HOOKS=1`) so smoke tests can introspect runtime state without exposing internals to production consumers.
+
+### Why we missed this
+
+Layer tests had been written against fixtures with relative paths (`'src/Foo.al'`). The `--server` protocol emits absolute fwd-slash paths. `findCoverageForFile`'s relative-path branch matched the fixtures; the absolute-path branch (which would have caught this) didn't exist because the test fixtures never exercised it. The new smoke test runs the real engine against the real project, so the next time the wire shape diverges from what consumers expect, it surfaces here.
+
 ## 0.5.3 (2026-04-29)
 
 ### Fixes

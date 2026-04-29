@@ -3,16 +3,26 @@ import { ExecutionResult } from '../runner/outputParser';
 
 export class AlchemistOutputChannel {
   private readonly channel: vscode.OutputChannel;
+  private readonly version: string;
 
-  constructor() {
+  constructor(version: string = 'unknown') {
     this.channel = vscode.window.createOutputChannel('ALchemist');
+    this.version = version;
+    // Log the running extension version once on construction so it's
+    // recoverable from the channel even before any test runs. Saves
+    // "is this build picking up my fix?" debugging cycles.
+    this.channel.appendLine(`ALchemist v${this.version} loaded`);
   }
 
   displayResult(result: ExecutionResult, fileName: string): void {
     this.channel.clear();
 
-    const separator = '\u2501'.repeat(47);
-    this.channel.appendLine(`\u2501\u2501\u2501 ALchemist ${separator.substring(14)}`);
+    const protoLabel = typeof result.protocolVersion === 'number'
+      ? ` \u00b7 protocol v${result.protocolVersion}`
+      : '';
+    const header = `\u2501\u2501\u2501 ALchemist v${this.version}${protoLabel} `;
+    const padding = '\u2501'.repeat(Math.max(3, 60 - header.length));
+    this.channel.appendLine(header + padding);
 
     const modeLabel = result.mode === 'scratch' ? 'scratch' : 'test';
     this.channel.appendLine(`  \u25B6 ${fileName} (${modeLabel})`);
@@ -35,7 +45,8 @@ export class AlchemistOutputChannel {
       this.channel.appendLine(`  Coverage: ${coveredLines}/${totalLines} statements (${pct}%)`);
     }
 
-    this.channel.appendLine(separator);
+    const footer = '━'.repeat(60);
+    this.channel.appendLine(footer);
 
     // Auto-focus based on settings
     const config = vscode.workspace.getConfiguration('alchemist');

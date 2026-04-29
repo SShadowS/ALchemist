@@ -98,14 +98,38 @@ async function withEngine<T>(fn: (engine: ExecutionEngine) => Promise<T>): Promi
   return fn(executionEngine);
 }
 
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  console.log('ALchemist: activating...');
+/**
+ * Test-only hook surface. Activated via the `ALCHEMIST_TEST_HOOKS=1` env var
+ * (set by `runIntegrationTests.ts` when running under @vscode/test-electron).
+ * Production builds return `undefined` from `activate` and these hooks are
+ * inert. Do NOT consume from production code or other extensions.
+ */
+export interface TestHooks {
+  getLastExecutionResult(): import('./runner/outputParser').ExecutionResult | undefined;
+  getDecorationManager(): DecorationManager;
+  getWorkspaceModel(): WorkspaceModel;
+  /** Resolves once `executionEngineReady` has settled (engine spawned or failed). */
+  awaitEngineReady(): Promise<void>;
+  /**
+   * Drive the engine directly with a runtests request and pipe the result
+   * through `handleResult` (the same path the runNow command uses). Returns
+   * the result so the caller doesn't have to poll `getLastExecutionResult`.
+   * Skips the workspace-folder + routeSave plumbing that the runNow / save
+   * paths require — useful for smoke-testing the engine + decoration flow
+   * without needing a full workspace mount.
+   */
+  runTestsAndApply(sourcePaths: string[]): Promise<import('./runner/outputParser').ExecutionResult>;
+}
+
+export async function activate(context: vscode.ExtensionContext): Promise<TestHooks | undefined> {
 
   try {
     // Initialize runtime infra first
     runnerManager = new AlRunnerManager();
     decorationManager = new DecorationManager(context.extensionPath);
-    outputChannel = new AlchemistOutputChannel();
+    const extVersion = (context.extension?.packageJSON?.version as string | undefined) ?? 'unknown';
+    outputChannel = new AlchemistOutputChannel(extVersion);
+    console.log(`ALchemist v${extVersion} activating from ${context.extensionPath}`);
     statusBar = new StatusBarManager();
     scratchManager = new ScratchManager(context.globalStorageUri.fsPath);
     iterationStore = new IterationStore();
@@ -151,7 +175,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Chain ServerProcess + engine construction once the runner path is known.
   executionEngineReady = runnerManager.ensureInstalled()
     .then((runnerPath) => {
-      serverProcess = new ServerProcess({ runnerPath });
+      // Pin the runner's cwd to the first workspace folder. AL.Runner's
+      // SourceFileMapper emits paths via `Path.GetRelativePath(cwd, file)`
+      // (Pipeline.cs:457). If we don't set cwd here, the child inherits
+      // the extension host's cwd (typically VS Code's install dir, which
+      // is unrelated to the project) and source paths in JSON output
+      // become `../../../../Documents/AL/...` strings that the inline-
+      // capture filter can't resolve against the workspace. Pinning to a
+      // workspace folder makes emitted paths workspace-relative — and
+      // applyInlineCapturedValues then resolves them correctly via
+      // `path.resolve(workspacePath, sourceFile)`.
+      const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      serverProcess = new ServerProcess({ runnerPath, cwd });
       executionEngine = new ServerExecutionEngine(serverProcess);
     })
     .catch((err) => {
@@ -269,8 +304,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (editor) {
       const containingApp = workspaceModel.getAppContaining(editor.document.uri.fsPath);
       const wsPath = containingApp?.path ?? path.dirname(editor.document.uri.fsPath);
-      decorationManager.applyResults(editor, result, wsPath);
+      const renderStats = decorationManager.applyResults(editor, result, wsPath);
       resultAppId = containingApp?.id;
+      // Diagnostic: surface the render seam to the output channel so users
+      // (and us) can see at a glance whether captures arrived, whether the
+      // file filter matched, whether coverage joined, and how many ranges
+      // were actually painted. Each of those is a place a regression has
+      // bitten before.
+      outputChannel.appendLine(
+        `  Inline: ${renderStats.captureCount} captures → ${renderStats.capturesForActiveFile} for ${path.basename(renderStats.filePath)}` +
+        ` · coverageMatched=${renderStats.coverageMatched}` +
+        ` · painted=${renderStats.inlineDecorationsPainted}`,
+      );
+      if (renderStats.captureCount > 0 && renderStats.capturesForActiveFile === 0) {
+        outputChannel.appendLine(`    file filter dropped all. editor=${renderStats.filePath}`);
+        outputChannel.appendLine(`    workspacePath=${renderStats.workspacePath}`);
+        outputChannel.appendLine(`    sample sourceFile=${renderStats.sampleCaptureSourceFile ?? '<undefined>'}`);
+      }
+    } else {
+      outputChannel.appendLine('  Inline: skipped (no active editor at result time)');
     }
 
     // resultAppId is best-effort: it's the app owning the active editor's
@@ -649,6 +701,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     testController,
     iterationTablePanel
   );
+
+  // Test seam: only returned when running under @vscode/test-electron with
+  // ALCHEMIST_TEST_HOOKS=1. Lets the integration suite inspect runtime state
+  // (lastExecutionResult, decoration manager, workspace model) without
+  // exposing internals to production consumers.
+  if (process.env.ALCHEMIST_TEST_HOOKS === '1') {
+    return {
+      getLastExecutionResult: () => lastExecutionResult,
+      getDecorationManager: () => decorationManager,
+      getWorkspaceModel: () => workspaceModel,
+      awaitEngineReady: () => executionEngineReady,
+      runTestsAndApply: async (sourcePaths) => {
+        await executionEngineReady;
+        if (!executionEngine) {
+          throw new Error('executionEngine not available — check runner install');
+        }
+        const result = await executionEngine.runTests({
+          sourcePaths,
+          captureValues: true,
+          iterationTracking: true,
+          coverage: true,
+        });
+        handleResult(result);
+        return result;
+      },
+    };
+  }
+  return undefined;
 }
 
 export async function deactivate(): Promise<void> {

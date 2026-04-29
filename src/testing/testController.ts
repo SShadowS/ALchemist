@@ -60,7 +60,7 @@ export function groupTestItemsByApp(items: readonly { id: string }[]): Map<strin
  * are displayed).
  */
 export interface TestControllerDecorationSink {
-  applyResults(editor: vscode.TextEditor, result: ExecutionResult, wsPath: string): void;
+  applyResults(editor: vscode.TextEditor, result: ExecutionResult, wsPath: string): unknown;
   setCapturedValuesForTest(testName: string, values: CapturedValue[]): void;
   clearCapturedValueScopes(): void;
   setActiveTest(testName: string | undefined): void;

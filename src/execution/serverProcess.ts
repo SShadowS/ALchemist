@@ -1,13 +1,28 @@
 import * as cp from 'child_process';
 import { isProtocolV2Line, ProtocolLine } from './protocolV2Types';
 
-export type ServerSpawner = (runnerPath: string, args: string[]) => cp.ChildProcessWithoutNullStreams;
+export type ServerSpawner = (
+  runnerPath: string,
+  args: string[],
+  options?: { cwd?: string },
+) => cp.ChildProcessWithoutNullStreams;
 
 export interface ServerProcessOptions {
   runnerPath: string;
   args?: string[];
   spawner?: ServerSpawner;
   shutdownTimeoutMs?: number;
+  /**
+   * Working directory for the spawned AL.Runner process.
+   *
+   * AL.Runner emits source-file paths via `Path.GetRelativePath(cwd, file)`
+   * (Pipeline.cs:457), so its cwd anchors how those paths look on the wire.
+   * If unset, child inherits the extension host's cwd — typically the VS Code
+   * install dir — and emitted paths become awkward `../../../../...` strings
+   * that ALchemist's downstream filters can't resolve against the workspace.
+   * Pin to the workspace folder so emitted paths are workspace-relative.
+   */
+  cwd?: string;
 }
 
 interface PendingRequest {
@@ -108,8 +123,9 @@ export class ServerProcess {
   private spawnProcess(): void {
     const args = this.opts.args ?? ['--server'];
     const spawner: ServerSpawner = this.opts.spawner ?? (cp.spawn as any);
+    const spawnOpts = this.opts.cwd ? { cwd: this.opts.cwd } : undefined;
     // spawner may throw (e.g. spawn ENOENT)
-    const child = spawner(this.opts.runnerPath, args);
+    const child = spawner(this.opts.runnerPath, args, spawnOpts);
     this.proc = child;
     this.ready = false;
     this.buffer = '';

@@ -350,6 +350,125 @@ suite('DecorationManager — coverageV2 retires custom gutter', () => {
 
     dm.dispose();
   });
+
+  test('v2 applyResults with ABSOLUTE-path coverage + captures (server emits absolute paths) renders inline captures', () => {
+    // Real-world bug: AL.Runner --server emits absolute paths with forward
+    // slashes for both `coverage[].file` and `capturedValues[].alSourceFile`.
+    // findCoverageForFile compared `e.filename` (absolute fwd-slashes) against
+    // either `relativePath` (always relative) or `filePath.endsWith(...)`
+    // (Windows backslashes). Neither matched → silent no-op render.
+    const dm = new DecorationManager(__dirname);
+    const calls: DecorationCall[] = [];
+    const path = require('path') as typeof import('path');
+    const workspacePath = path.resolve(__dirname, 'fixture-ws');
+    const filePath = path.join(workspacePath, 'CU1.al');
+    const fakeEditor = makeFakeEditor(filePath, calls);
+
+    // Mimic the server's actual wire shape: absolute paths, forward slashes.
+    const absoluteFwdSlash = filePath.replace(/\\/g, '/');
+
+    const v2Result: ExecutionResult = {
+      ...makeV2Result([
+        {
+          name: 'TestProc', status: 'passed', durationMs: 1,
+          alSourceFile: absoluteFwdSlash,
+          capturedValues: [
+            { scopeName: 's', objectName: 'CU1', alSourceFile: absoluteFwdSlash, variableName: 'myint', value: '1', statementId: 0 },
+            { scopeName: 's', objectName: 'CU1', alSourceFile: absoluteFwdSlash, variableName: 'myint', value: '2', statementId: 1 },
+          ],
+        } as any,
+      ]),
+      coverage: [],
+      coverageV2: [
+        {
+          file: absoluteFwdSlash,
+          lines: [
+            { line: 1, hits: 1 },
+            { line: 3, hits: 1 },
+          ],
+          totalStatements: 2,
+          hitStatements: 2,
+        },
+      ],
+    };
+
+    dm.applyResults(fakeEditor, v2Result, workspacePath);
+
+    const captureDecorationCalls = calls.filter(c =>
+      c.type && c.type.options && (c.type.options.after || c.type.options.before),
+    );
+    const nonEmpty = captureDecorationCalls.filter(c => c.ranges.length > 0);
+    assert.ok(
+      nonEmpty.length > 0,
+      `expected non-empty capture decoration with absolute-path coverage entries; got ${captureDecorationCalls.length} call(s), all empty. ` +
+      `findCoverageForFile must accept absolute paths emitted by the AL.Runner --server protocol.`,
+    );
+
+    dm.dispose();
+  });
+
+  test('v2 applyResults with COMPUTED-RELATIVE sourceFile (runner spawned from a foreign cwd) renders inline captures', () => {
+    // Real-world bug: AL.Runner emits source paths via
+    //   `Path.GetRelativePath(Directory.GetCurrentDirectory(), file)`.
+    // When the runner is spawned by VS Code's extension host, its cwd is
+    // typically the VS Code install dir (deep under `C:\Users\<user>\AppData\
+    // Local\Programs\Microsoft VS Code`). The AL file lives under
+    // `C:\Users\<user>\Documents\AL\<project>`. The relative path that
+    // results goes up several levels (e.g. `../../../../Documents/AL/<...>`).
+    // The capture-filter does `path.resolve(workspacePath, sourceFile)` which
+    // anchors against workspacePath, NOT the runner's cwd — so without a
+    // matching cwd the resolve walks to the wrong absolute path and the
+    // filter drops every capture. The runtime fix pins the runner's cwd to
+    // the workspace folder; this test guards the alternative scenario where
+    // the runner emits paths relative to *some* directory we know about and
+    // the filter must still match when that directory equals workspacePath.
+    const dm = new DecorationManager(__dirname);
+    const calls: DecorationCall[] = [];
+    const path = require('path') as typeof import('path');
+    const workspacePath = path.resolve(__dirname, 'fixture-ws');
+    const filePath = path.join(workspacePath, 'CU1.al');
+    const fakeEditor = makeFakeEditor(filePath, calls);
+
+    // Simulate the runner having been spawned with cwd = workspacePath.
+    // SourceFileMapper.GetFile returns `Path.GetRelativePath(workspacePath, filePath)` = "CU1.al".
+    const relativeSourceFile = 'CU1.al';
+
+    const v2Result: ExecutionResult = {
+      ...makeV2Result([
+        {
+          name: 'TestProc', status: 'passed', durationMs: 1,
+          alSourceFile: relativeSourceFile,
+          capturedValues: [
+            { scopeName: 's', objectName: 'CU1', alSourceFile: relativeSourceFile, variableName: 'myint', value: '1', statementId: 0 },
+            { scopeName: 's', objectName: 'CU1', alSourceFile: relativeSourceFile, variableName: 'myint', value: '2', statementId: 1 },
+          ],
+        } as any,
+      ]),
+      coverage: [],
+      coverageV2: [
+        {
+          file: relativeSourceFile,
+          lines: [{ line: 1, hits: 1 }, { line: 3, hits: 1 }],
+          totalStatements: 2,
+          hitStatements: 2,
+        },
+      ],
+    };
+
+    dm.applyResults(fakeEditor, v2Result, workspacePath);
+
+    const captureDecorationCalls = calls.filter(c =>
+      c.type && c.type.options && (c.type.options.after || c.type.options.before),
+    );
+    const nonEmpty = captureDecorationCalls.filter(c => c.ranges.length > 0);
+    assert.ok(
+      nonEmpty.length > 0,
+      `expected non-empty capture decoration when sourceFile is workspace-relative (runner spawned with cwd=workspace); ` +
+      `got ${captureDecorationCalls.length} call(s), all empty. The capture-file filter must accept this shape.`,
+    );
+
+    dm.dispose();
+  });
 });
 
 // --- Test helpers ---------------------------------------------------------

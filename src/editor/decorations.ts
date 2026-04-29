@@ -11,6 +11,30 @@ export { v2ToV1Captured };
 /** Internal sentinel for the union bucket populated by v1 applyResults. */
 const LEGACY_SCOPE_KEY = '__legacy__';
 
+/** Diagnostic stats returned by `applyResults` so callers can log what landed. */
+export interface RenderStats {
+  /** Total captured values seen in the result (across all tests, all files). */
+  captureCount: number;
+  /** Captures that matched the active editor's file path. */
+  capturesForActiveFile: number;
+  /** True when `findCoverageForFile` returned a non-empty entry for the active file. */
+  coverageMatched: boolean;
+  /** Number of inline-decoration ranges painted (== `setDecorations(..., decorations)` length). */
+  inlineDecorationsPainted: number;
+  /** Active editor's file path at apply time. */
+  filePath: string;
+  /** Workspace root used for path resolution. */
+  workspacePath: string;
+  /** Sample capture sourceFile (first one), surfaced when the filter dropped everything. */
+  sampleCaptureSourceFile?: string;
+}
+
+interface InlineRenderStats {
+  capturesForActiveFile: number;
+  coverageMatched: boolean;
+  inlineDecorationsPainted: number;
+}
+
 /**
  * Distributes messages across call sites and formats them for display.
  * Returns a map from call index (0-based) to its display string and optional allValues for hover.
@@ -149,7 +173,15 @@ export class DecorationManager {
     });
   }
 
-  applyResults(editor: vscode.TextEditor, result: ExecutionResult, workspacePath: string): void {
+  applyResults(editor: vscode.TextEditor, result: ExecutionResult, workspacePath: string): RenderStats {
+    const stats: RenderStats = {
+      captureCount: 0,
+      capturesForActiveFile: 0,
+      coverageMatched: false,
+      inlineDecorationsPainted: 0,
+      filePath: editor.document.uri.fsPath,
+      workspacePath,
+    };
     this.clearDecorations(editor);
 
     const config = vscode.workspace.getConfiguration('alchemist');
@@ -204,6 +236,7 @@ export class DecorationManager {
     }
 
     this.capturedValuesByTest.set(LEGACY_SCOPE_KEY, captured);
+    stats.captureCount = captured.length;
     if (captured.length > 0) {
       // applyInlineCapturedValues uses per-file coverage line numbers (v1 cobertura
       // shape) to map each capture's statementId into an editor line. For v2
@@ -219,8 +252,15 @@ export class DecorationManager {
             lines: fc.lines.map(l => ({ number: l.line, hits: l.hits })),
           }))
         : result.coverage;
-      this.applyInlineCapturedValues(editor, captured, coverageForFilter, workspacePath);
+      const inlineStats = this.applyInlineCapturedValues(editor, captured, coverageForFilter, workspacePath);
+      stats.capturesForActiveFile = inlineStats.capturesForActiveFile;
+      stats.coverageMatched = inlineStats.coverageMatched;
+      stats.inlineDecorationsPainted = inlineStats.inlineDecorationsPainted;
+      if (inlineStats.capturesForActiveFile === 0 && captured.length > 0) {
+        stats.sampleCaptureSourceFile = captured[0].sourceFile;
+      }
     }
+    return stats;
   }
 
   clearDecorations(editor: vscode.TextEditor): void {
@@ -428,8 +468,9 @@ export class DecorationManager {
     editor.setDecorations(this.messageDecorationType, messageDecorations);
   }
 
-  private applyInlineCapturedValues(editor: vscode.TextEditor, capturedValues: CapturedValue[], coverage: CoverageEntry[], workspacePath: string): void {
-    if (capturedValues.length === 0) return;
+  private applyInlineCapturedValues(editor: vscode.TextEditor, capturedValues: CapturedValue[], coverage: CoverageEntry[], workspacePath: string): InlineRenderStats {
+    const stats: InlineRenderStats = { capturesForActiveFile: 0, coverageMatched: false, inlineDecorationsPainted: 0 };
+    if (capturedValues.length === 0) return stats;
 
     // Detect lossy v2-translated values once per session: a sourceFile that
     // doesn't end .al likely came from objectName fallback in v2ToV1Captured.
@@ -443,12 +484,30 @@ export class DecorationManager {
 
     // Filter captured values to only those belonging to this file
     const filePath = editor.document.uri.fsPath;
+    const filePathNorm = path.normalize(filePath).toLowerCase();
     const fileValues = capturedValues.filter(cv => {
       if (!cv.sourceFile) return false;
       const resolved = path.resolve(workspacePath, cv.sourceFile);
-      return path.normalize(resolved).toLowerCase() === path.normalize(filePath).toLowerCase();
+      return path.normalize(resolved).toLowerCase() === filePathNorm;
     });
-    if (fileValues.length === 0) return;
+    if (fileValues.length === 0 && capturedValues.length > 0) {
+      // Diagnostic: log one failed comparison so we can see why every capture
+      // was dropped. This fires only on the cold path where the filter
+      // produced nothing — production-quiet, debug-loud.
+      const sample = capturedValues[0];
+      const sampleResolved = sample.sourceFile ? path.resolve(workspacePath, sample.sourceFile) : '<no sourceFile>';
+      console.warn(
+        '[ALchemist] file filter dropped all captures.',
+        '\n  editor.fsPath        =', filePath,
+        '\n  workspacePath        =', workspacePath,
+        '\n  sample.sourceFile    =', sample.sourceFile,
+        '\n  resolve(ws, src)     =', sampleResolved,
+        '\n  normalize+lower lhs  =', path.normalize(sampleResolved).toLowerCase(),
+        '\n  normalize+lower rhs  =', filePathNorm,
+      );
+    }
+    stats.capturesForActiveFile = fileValues.length;
+    if (fileValues.length === 0) return stats;
 
     // Group captured values by statementId, keeping only the last value per variable per statement
     const lastValues = new Map<string, CapturedValue>();
@@ -457,7 +516,8 @@ export class DecorationManager {
       lastValues.set(key, cv);
     }
     const entry = this.findCoverageForFile(coverage, filePath, workspacePath);
-    if (!entry || entry.lines.length === 0) return;
+    if (!entry || entry.lines.length === 0) return stats;
+    stats.coverageMatched = true;
 
     // statementIds are sequential per scope — map them to coverage line numbers in order
     const coveredLines = entry.lines
@@ -482,13 +542,28 @@ export class DecorationManager {
     }
 
     editor.setDecorations(this.capturedValueDecorationType, decorations);
+    stats.inlineDecorationsPainted = decorations.length;
+    return stats;
   }
 
   private findCoverageForFile(coverage: CoverageEntry[], filePath: string, workspacePath: string): CoverageEntry | undefined {
-    const relativePath = path.relative(workspacePath, filePath).replace(/\\/g, '/');
+    // Coverage entry filenames arrive in three shapes depending on producer:
+    //   1. relative to workspace, fwd slashes  (legacy v1 cobertura)         e.g. "src/Foo.al"
+    //   2. absolute, fwd slashes               (AL.Runner --server / v2)     e.g. "C:/Users/.../Foo.al"
+    //   3. absolute, native slashes            (defensive)                   e.g. "C:\Users\...\Foo.al"
+    // `filePath` is always native (Windows backslashes from editor.document.uri.fsPath).
+    // Normalize both sides to absolute, native, lowercase before comparing.
+    const fileAbs = path.normalize(filePath).toLowerCase();
+    const relativePath = path.relative(workspacePath, filePath).replace(/\\/g, '/').toLowerCase();
     return coverage.find((e) => {
-      const entryPath = e.filename.replace(/\\/g, '/');
-      return entryPath === relativePath || filePath.endsWith(entryPath);
+      const entryNorm = e.filename.replace(/\\/g, '/').toLowerCase();
+      // Branch 1: legacy relative-path match
+      if (entryNorm === relativePath) return true;
+      // Branches 2 & 3: absolute-path match — resolve against ws (resolve()
+      // returns absolute as-is when the input already is absolute), normalize
+      // to native slashes, and compare case-insensitively (Windows-friendly).
+      const entryAbs = path.normalize(path.resolve(workspacePath, e.filename)).toLowerCase();
+      return entryAbs === fileAbs;
     });
   }
 
