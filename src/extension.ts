@@ -175,18 +175,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestHo
   // Chain ServerProcess + engine construction once the runner path is known.
   executionEngineReady = runnerManager.ensureInstalled()
     .then((runnerPath) => {
-      // Pin the runner's cwd to the first workspace folder. AL.Runner's
-      // SourceFileMapper emits paths via `Path.GetRelativePath(cwd, file)`
-      // (Pipeline.cs:457). If we don't set cwd here, the child inherits
-      // the extension host's cwd (typically VS Code's install dir, which
-      // is unrelated to the project) and source paths in JSON output
-      // become `../../../../Documents/AL/...` strings that the inline-
-      // capture filter can't resolve against the workspace. Pinning to a
-      // workspace folder makes emitted paths workspace-relative — and
-      // applyInlineCapturedValues then resolves them correctly via
-      // `path.resolve(workspacePath, sourceFile)`.
-      const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-      serverProcess = new ServerProcess({ runnerPath, cwd });
+      // Plan E3 Group A: AL.Runner emits source paths via Path.GetFullPath
+      // (absolute, fwd-slash) regardless of cwd. The v0.5.4 cwd pin we
+      // used as a workaround for Path.GetRelativePath emission is no
+      // longer needed — the wire format is cwd-independent. ServerProcess
+      // still accepts a cwd option for diagnostic scenarios but the
+      // happy path inherits whatever cwd the extension host has.
+      serverProcess = new ServerProcess({ runnerPath });
       executionEngine = new ServerExecutionEngine(serverProcess);
     })
     .catch((err) => {

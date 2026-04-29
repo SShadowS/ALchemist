@@ -43,29 +43,25 @@ suite('ServerProcess', () => {
     await sp.dispose();
   });
 
-  test('forwards cwd to the spawner so AL.Runner emits workspace-relative source paths', async () => {
-    // Regression: AL.Runner uses Path.GetRelativePath(Directory.GetCurrentDirectory(), file)
-    // when registering source paths in SourceFileMapper. The extension host's
-    // cwd is typically the VS Code install dir (e.g. C:\Users\<u>\AppData\
-    // Local\Programs\Microsoft VS Code), unrelated to the AL project. Without
-    // pinning cwd, emitted paths look like `../../../../Documents/AL/<...>`
-    // and downstream `path.resolve(workspacePath, sourceFile)` walks to the
-    // wrong absolute path. Pinning cwd to the workspace folder makes paths
-    // workspace-relative and the resolve becomes correct.
+  test('forwards explicit cwd option to the spawner (defensive opt-in)', async () => {
+    // Plan E3 Group F: AL.Runner emits absolute paths regardless of cwd
+    // (Path.GetFullPath, see Pipeline.cs upstream). The cwd option is no
+    // longer needed for path correctness. We retain it as a defensive
+    // opt-in for future diagnostic scenarios — this test pins that the
+    // option still threads through to the spawner unchanged when set.
     const sp = new ServerProcess({
       runnerPath: 'al-runner',
       spawner,
-      cwd: 'C:/some/workspace/folder',
+      cwd: 'C:/some/explicit/cwd',
     });
     setImmediate(() => proc.pushStdout('{"ready":true}'));
     setImmediate(() => proc.pushStdout('{"tests":[],"exitCode":0}'));
     await sp.send({ command: 'runtests', sourcePaths: ['/x'] });
     assert.strictEqual(spawner.callCount, 1, 'spawner called once');
-    const callArgs = spawner.firstCall.args;
     assert.deepStrictEqual(
-      callArgs[2],
-      { cwd: 'C:/some/workspace/folder' },
-      'spawner must receive { cwd } as third argument so the runner inherits the workspace cwd',
+      spawner.firstCall.args[2],
+      { cwd: 'C:/some/explicit/cwd' },
+      'spawner must receive { cwd } as third argument when caller opts into it',
     );
     await sp.dispose();
   });
