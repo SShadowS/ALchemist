@@ -16,6 +16,8 @@ interface PendingRequest {
   reject: (err: Error) => void;
   retried: boolean;
   onEvent?: (event: ProtocolLine) => void;
+  /** True once at least one onEvent has fired for this request. */
+  streamed: boolean;
 }
 
 export class ServerProcess {
@@ -33,14 +35,40 @@ export class ServerProcess {
 
   constructor(private readonly opts: ServerProcessOptions) {}
 
+  /**
+   * Send a payload to the AL.Runner --server process.
+   *
+   * Behavior depends on the server's protocol version (detected per-line via
+   * isProtocolV2Line):
+   * - v2: zero-or-more `{type:"test"|"progress"}` lines fire `onEvent` (if
+   *   provided), then a terminal `{type:"summary"|"ack"}` resolves the promise.
+   * - v1 (no `type` field): the first complete JSON line resolves the promise;
+   *   `onEvent` is never fired.
+   *
+   * If the server crashes mid-stream after at least one onEvent has fired,
+   * the request is rejected (NOT retried) — consumers should not see partial
+   * results followed by a re-stream of the same events.
+   *
+   * If `onEvent` throws, the in-flight request is rejected with that error.
+   */
   async send(payload: object, onEvent?: (event: ProtocolLine) => void): Promise<any> {
     if (this.disposed) { throw new Error('ServerProcess disposed'); }
     return new Promise((resolve, reject) => {
-      this.queue.push({ payload, resolve, reject, retried: false, onEvent });
+      this.queue.push({ payload, resolve, reject, retried: false, onEvent, streamed: false });
       this.pump();
     });
   }
 
+  /**
+   * Fire-and-forget cancel. Writes `{"command":"cancel"}\n` to stdin and
+   * returns. Does NOT await any response — the cancel ack arrives on the
+   * normal stream and is routed by `routeLine`: if a `cancel` send is in
+   * flight, that call resolves; otherwise the ack is silently dropped.
+   *
+   * Safe to call when no request is in flight or when `proc` exists but
+   * `ready === false` (the OS pipe buffers the write until the dispatch
+   * loop starts processing it).
+   */
   async cancel(): Promise<void> {
     if (this.disposed || !this.proc) { return; }
     try {
@@ -161,7 +189,17 @@ export class ServerProcess {
         return;
       }
       // Non-terminal v2 line (test / progress) — fire onEvent, keep buffering.
-      req.onEvent?.(obj);
+      // Mark `streamed` BEFORE invoking the callback so handleExit/handleProcError
+      // know not to respawn-retry even if onEvent throws.
+      try {
+        req.streamed = true;
+        req.onEvent?.(obj);
+      } catch (err: any) {
+        // Consumer's onEvent threw — abandon this stream, surface the error.
+        this.inFlight = undefined;
+        req.reject(err instanceof Error ? err : new Error(String(err)));
+        this.pump();
+      }
       return;
     }
     // Not a v2 line. v1 fallback: a single-line response. Resolve directly.
@@ -182,23 +220,30 @@ export class ServerProcess {
     this.readyPromise = undefined;
     this.readyResolve = undefined;
 
-    if (wasInFlight && !wasInFlight.retried) {
-      // In-flight request: re-queue with retried flag and respawn.
+    if (wasInFlight && !wasInFlight.retried && !wasInFlight.streamed) {
+      // In-flight request that hasn't streamed any events yet: re-queue with
+      // retried flag and respawn. Safe because the consumer hasn't observed
+      // any partial state, so a second run won't double-fire events.
       wasInFlight.retried = true;
       this.queue.unshift(wasInFlight);
       this.inFlight = undefined;
       this.pump();
     } else if (wasInFlight) {
-      // Already retried once — give up.
+      // Already retried OR already streamed events — give up rather than
+      // double-fire. The consumer has either had its retry chance, or has
+      // already seen partial test events that can't be unsent.
       this.inFlight = undefined;
-      wasInFlight.reject(new Error('AL.Runner --server crashed and respawn already attempted'));
+      const reason = wasInFlight.streamed
+        ? 'AL.Runner --server crashed mid-stream after partial test events were delivered'
+        : 'AL.Runner --server crashed and respawn already attempted';
+      wasInFlight.reject(new Error(reason));
     }
     // If no in-flight: items in queue will be handled by dispatchWhenReady detecting proc===undefined
     // and calling pump() → spawnProcess() again.
   }
 
   private handleProcError(err: Error): void {
-    if (this.inFlight && !this.inFlight.retried) {
+    if (this.inFlight && !this.inFlight.retried && !this.inFlight.streamed) {
       const req = this.inFlight;
       req.retried = true;
       this.inFlight = undefined;
@@ -208,9 +253,14 @@ export class ServerProcess {
       this.ready = false;
       this.pump();
     } else if (this.inFlight) {
+      // Already retried OR already streamed events — surface the error
+      // rather than respawn-and-replay.
       const req = this.inFlight;
       this.inFlight = undefined;
-      req.reject(err);
+      const surfaced = req.streamed
+        ? new Error('AL.Runner --server crashed mid-stream after partial test events were delivered')
+        : err;
+      req.reject(surfaced);
     }
   }
 
