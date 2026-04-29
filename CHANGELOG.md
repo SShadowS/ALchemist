@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.5.1 (2026-04-29)
+
+### Fixes (closing v0.5.0 known limitations)
+
+- **Save-triggered runs now stream.** Save-on-save and Run Wider Scope both go through `TestController.runTestsForRequest`, gaining live Test Explorer updates, native coverage rendering, and clickable stack frames previously available only on Test-Explorer-initiated runs.
+- **Cursor-driven active test.** Moving the cursor into a `[Test]` proc sets that test as the active one in DecorationManager; inline captured-value decorations now show only that test's values. Replaces the v0.5.0 Option A "most-recent streaming test wins" heuristic.
+- **Captured values render correctly on the v2 path.** `v2ToV1Captured` now threads each test event's `alSourceFile` into the v1 `sourceFile` slot, so DecorationManager's inline-render file filter matches the editor's AL file path. The previous lossy translation (`objectName → sourceFile`) silently dropped captures from inline rendering.
+- **Multi-app `testItems` collision risk eliminated.** The bare-name `testItems` map is gone; TestItem resolution now uses compound `testItemsById` keys scoped to the running app via a transient `currentAppId` field set in the multi-app loop. Multi-app workspaces with same-named tests across apps no longer cross-fire.
+
+### Internal
+
+- New `src/testing/testFinder.ts` — pure helper for cursor → TestItem resolution.
+- `TestController.runTestsForRequest(request, token)` — new public API for programmatic runs.
+- `TestController.getTestItemsById()` / `getAppTestItem(appId)` — read-only accessors used by the cursor-driven selector and the save-router request builder.
+- `v2ToV1Captured(v2, alSourceFile?)` — second arg threads the AL file path; legacy single-arg behavior preserved for backward compat.
+- DecorationManager logs a one-time per-session warning when it observes lossy non-`.al` `sourceFile` values (helps diagnose future translation regressions).
+- Stale `T9 will…` / `T10 will…` planning placeholders replaced with accurate post-E2.1 documentation.
+
+### Migration
+
+No user action required. v0.5.0 settings continue to work unchanged.
+
 ## 0.5.0 (2026-04-29)
 
 ### Features
