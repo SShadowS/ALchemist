@@ -64,6 +64,15 @@ export class AlchemistTestController {
   private readonly testItemsById = new Map<string, vscode.TestItem>();
   private decorationManager?: TestControllerDecorationSink;
 
+  /**
+   * Item ids reported (passed/failed/errored) during the current run.
+   * Cleared at the start of each `runTests` invocation. Used by the
+   * cancel-cleanup path to mark unreported items as `skipped` per
+   * spec §471. Tracked inside `handleStreamingEvent` (v2) and
+   * `applyV1Result` (v1 fallback).
+   */
+  private reportedItemIds = new Set<string>();
+
   constructor(
     private readonly getEngine: () => ExecutionEngine | undefined,
     private readonly model?: WorkspaceModel,
@@ -90,6 +99,11 @@ export class AlchemistTestController {
           token: vscode.CancellationToken,
         ) => Promise<vscode.StatementCoverage[]>;
       }).loadDetailedCoverage = async (_testRun, fc, _token) => {
+        // Empty array signals "no per-statement detail available" — VS Code
+        // then degrades to file-level summary, which is the desired fallback
+        // for FileCoverage instances created outside this adapter (e.g.
+        // synthetic FCs minted by tests, or non-streaming code paths that
+        // didn't register details with the adapter cache).
         return getDetails(fc) ?? [];
       };
     }
@@ -178,12 +192,23 @@ export class AlchemistTestController {
 
     const run = this.controller.createTestRun(request);
 
+    // Reset per-run reporting bookkeeping. C1: required so the cancel
+    // cleanup path can compute the set of *unreported* items.
+    this.reportedItemIds.clear();
+
     // Cancel forwarding: any token cancellation triggers engine.cancel().
-    // The engine implementation is fire-and-forget; mid-stream events
-    // already received remain on the run, and the final summary still
-    // arrives (with `cancelled: true` in v2).
+    // C2: a `runDone` flag turns the listener into a no-op once the run
+    // finishes, preventing a late cancel (e.g. user clicks cancel just
+    // after the final summary lands) from racing with the next run.
+    // I1: rejection from engine.cancel() is logged rather than left as
+    // an unhandled promise rejection — the engine implementation is
+    // fire-and-forget, but we don't want silent failures.
+    let runDone = false;
     const cancelSub = token.onCancellationRequested(() => {
-      void engine.cancel();
+      if (runDone) { return; }
+      engine.cancel().catch(err => {
+        console.error('[ALchemist] engine.cancel() failed during user cancellation', err);
+      });
     });
 
     try {
@@ -192,6 +217,7 @@ export class AlchemistTestController {
         // constructed without a WorkspaceModel (older code paths).
         const wsf = vscode.workspace.workspaceFolders?.[0];
         if (!wsf) { return; }
+        if (token.isCancellationRequested) { return; }
         const result = await engine.runTests(
           { sourcePaths: [wsf.uri.fsPath], captureValues: true, iterationTracking: true, coverage: true },
           (event) => this.handleStreamingEvent(run, event),
@@ -204,8 +230,14 @@ export class AlchemistTestController {
       // Multi-app mode (T8+): each app is a separate runtests invocation
       // with the dependency closure as the source-paths list. Selection
       // narrows the set of apps; Run All iterates every app.
+      //
+      // C1: cancellation must short-circuit the loop so we don't keep
+      // launching new runtests invocations after the user clicked
+      // cancel. The current iteration's await may still be in flight,
+      // but no new app is started.
       const appsToRun = this.resolveAppsForRequest(request);
       for (const app of appsToRun) {
+        if (token.isCancellationRequested) { break; }
         const depPaths = this.model.getDependencies(app.id).map(a => a.path);
         const sourcePaths = depPaths.length > 0 ? depPaths : [app.path];
         const result = await engine.runTests(
@@ -216,7 +248,26 @@ export class AlchemistTestController {
         this.onResult?.(result);
       }
     } finally {
+      // Order is load-bearing: flip runDone first so any cancel listener
+      // that fires between here and dispose() becomes a no-op. Then
+      // dispose, then mark unreported items as skipped (which only
+      // matters when cancellation actually happened), then end the run.
+      runDone = true;
       cancelSub.dispose();
+      if (token.isCancellationRequested) {
+        // C1: per spec §471, items that didn't get a passed/failed/
+        // errored event during a cancelled run should be reported as
+        // `skipped` so VS Code shows them in a neutral state instead of
+        // leaving them stuck in the running spinner.
+        const candidateItems: vscode.TestItem[] = request.include && request.include.length > 0
+          ? Array.from(request.include)
+          : Array.from(this.testItemsById.values());
+        for (const item of candidateItems) {
+          if (!this.reportedItemIds.has(item.id)) {
+            run.skipped(item);
+          }
+        }
+      }
       run.end();
     }
   }
@@ -251,6 +302,9 @@ export class AlchemistTestController {
     if (event.type !== 'test') { return; }
     const item = this.testItems.get(event.name);
     if (!item) { return; }
+    // Track the item id BEFORE dispatching so the cancel-cleanup path
+    // (C1) doesn't double-report a still-running event as skipped.
+    this.reportedItemIds.add(item.id);
     if (event.status === 'pass') {
       run.passed(item, event.durationMs);
     } else if (event.status === 'fail') {
@@ -277,6 +331,11 @@ export class AlchemistTestController {
     // 1.88 doesn't declare it, hence the casts.
     const StackFrameCtor = (vscode as unknown as { TestMessageStackFrame?: new (label: string, uri?: vscode.Uri, position?: vscode.Position) => unknown }).TestMessageStackFrame;
     if (StackFrameCtor && event.stackFrames && event.stackFrames.length > 0) {
+      // I4: TODO — VS Code 1.93's TestMessageStackFrame constructor
+      // doesn't expose a presentationHint slot. AlStackFrame's hint
+      // ('normal' | 'subtle' | 'deemphasize' | 'label') is dropped here.
+      // When the VS Code API gains a hint parameter, thread
+      // f.presentationHint through to the constructor.
       (message as unknown as { stackTrace?: unknown[] }).stackTrace = event.stackFrames.map(f => new StackFrameCtor(
         f.name ?? '',
         f.source?.path ? vscode.Uri.file(f.source.path) : undefined,
@@ -303,8 +362,12 @@ export class AlchemistTestController {
    *   weren't carried (i.e. v1 server, or future v2 protocol regression)
    */
   private applyFinalResult(run: vscode.TestRun, result: ExecutionResult): void {
-    // VS Code native coverage rendering: only when result has v2
-    // coverage and the TestRun supports addCoverage.
+    // I3: v2 native coverage path. We pass each FileCoverage straight
+    // through to VS Code's gutter renderer via run.addCoverage. The
+    // legacy v1 path populates `result.coverage` (cobertura-derived) and
+    // is still rendered by the custom DecorationManager that
+    // extension.ts wires up via setDecorationManager — Task 9 retires
+    // that custom path once protocol v2 is the default everywhere.
     if (result.coverageV2 && typeof (run as unknown as { addCoverage?: (fc: vscode.FileCoverage) => void }).addCoverage === 'function') {
       const fcs = toVsCodeCoverage(result.coverageV2);
       for (const fc of fcs) {
@@ -312,9 +375,19 @@ export class AlchemistTestController {
       }
     }
 
-    // If no streaming events were received (v1 or no protocol detected),
-    // apply the v1-style summary to populate the run. We detect via
-    // protocolVersion; v2 results have it set, v1 doesn't.
+    // I2: v2 streaming already populated the run via
+    // handleStreamingEvent. The v1 fallback re-runs the result.tests[]
+    // walk for non-v2 servers.
+    //
+    // NOTE: `applyV1Result` fires once per app iteration. In a
+    // multi-app workspace this can re-emit run.passed/failed for the
+    // same TestItem if test names collide across apps (`testItems` is
+    // keyed by bare name, not the compound id). Acceptable today
+    // because v1 servers don't run multi-app workspaces in production
+    // — the v1-fallback test (`v1 fallback: protocolVersion undefined
+    // → applyV1Result populates run.passed/failed`) explicitly asserts
+    // this duplication. Task 10's name-disambiguation work would
+    // address it if needed; until then the documented behaviour holds.
     if (result.protocolVersion !== 2) {
       this.applyV1Result(run, result);
     }
@@ -324,6 +397,9 @@ export class AlchemistTestController {
     for (const t of result.tests) {
       const item = this.testItems.get(t.name);
       if (!item) { continue; }
+      // C1: track this id as reported so cancel-cleanup doesn't
+      // additionally mark it skipped.
+      this.reportedItemIds.add(item.id);
       if (t.status === 'passed') {
         run.passed(item, t.durationMs);
       } else if (t.status === 'failed') {

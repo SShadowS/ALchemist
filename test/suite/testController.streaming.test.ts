@@ -97,13 +97,25 @@ async function triggerRun(
   return mockController.__lastTestRun;
 }
 
+/**
+ * Walks the controller's app→codeunit→test tree and returns the unique
+ * TestItem whose label matches `testName`. Throws on duplicate matches:
+ * the multi-app fixture currently has no name collisions, but if a future
+ * fixture introduces one, a silently-overwritten `found` would mask which
+ * app's item the caller actually got — leading to flaky assertions. Failing
+ * loudly forces the caller to disambiguate (typically by app id).
+ */
 function findTestItem(mockController: any, testName: string): vscode.TestItem | undefined {
-  // mockController.items is a MockTestItemCollection of app items. Walk it.
   let found: vscode.TestItem | undefined;
   mockController.items.forEach((appItem: vscode.TestItem) => {
     appItem.children.forEach((cuItem: vscode.TestItem) => {
       cuItem.children.forEach((testItem: vscode.TestItem) => {
-        if (testItem.label === testName) { found = testItem; }
+        if (testItem.label === testName) {
+          if (found) {
+            throw new Error(`Ambiguous test name: ${testName} exists in multiple apps`);
+          }
+          found = testItem;
+        }
       });
     });
   });
@@ -394,5 +406,172 @@ suite('TestController streaming (v2)', () => {
     assert.strictEqual(typeof (controller as any).setDecorationManager, 'function');
     // Calling with a stub object should not throw.
     (controller as any).setDecorationManager({ applyResults: () => {} });
+  });
+
+  // C1: cancellation mid-loop. The first app's runTests fires the cancel,
+  // and we then assert that the second app is *not* invoked. The cleanest
+  // way to drive this is to override engine.runTests on the first call so
+  // it triggers cancel before resolving. Capture the requests array to
+  // verify only one runTests call happened.
+  test('cancel mid-loop skips remaining apps (C1)', async () => {
+    const engine = new StubEngine([[], []], [makeEmpty(), makeEmpty()]);
+    const { mockController } = await makeController(engine);
+    const tokenSrc = new vscode.CancellationTokenSource();
+
+    const calls: Array<{ sourcePaths: string[] }> = [];
+    const originalRunTests = engine.runTests.bind(engine);
+    engine.runTests = async (req, onTest) => {
+      calls.push({ sourcePaths: req.sourcePaths.slice() });
+      // Fire cancel during the first app's runTests. The second app's
+      // iteration must observe token.isCancellationRequested at the top
+      // and break before invoking engine.runTests.
+      if (calls.length === 1) {
+        tokenSrc.cancel();
+      }
+      return originalRunTests(req, onTest);
+    };
+
+    await triggerRun(mockController, new vscode.TestRunRequest(), tokenSrc.token);
+
+    assert.strictEqual(calls.length, 1, 'second app should NOT have been invoked after cancel');
+    assert.strictEqual(engine.canceled, true, 'engine.cancel() must have been forwarded');
+  });
+
+  // C1: items that didn't get a streaming event during a cancelled run
+  // should be reported as `skipped` (spec §471). Without the cleanup
+  // path they'd stay stuck in the running spinner.
+  test('cancelled run marks unreported test items as skipped (C1)', async () => {
+    // First app emits an event for ComputeDoubles only; cancel fires
+    // during the first call so the second app never runs. ComputeZero
+    // (in the same app) and any items in the second app must be marked
+    // skipped.
+    const events: TestEvent[] = [
+      { type: 'test', name: 'ComputeDoubles', status: 'pass', durationMs: 4 },
+    ];
+    const engine = new StubEngine([events, []], [makeEmpty(), makeEmpty()]);
+    const { mockController } = await makeController(engine);
+    const tokenSrc = new vscode.CancellationTokenSource();
+
+    const originalRunTests = engine.runTests.bind(engine);
+    engine.runTests = async (req, onTest) => {
+      // Drive the events first, *then* cancel. That mirrors the realistic
+      // sequence: some events arrive, user clicks cancel, summary lands.
+      const result = await originalRunTests(req, onTest);
+      if (engine.callCount === 1) {
+        tokenSrc.cancel();
+      }
+      return result;
+    };
+
+    await triggerRun(mockController, new vscode.TestRunRequest(), tokenSrc.token);
+    const run = mockController.__lastTestRun;
+
+    // ComputeDoubles got a passed event → not in skipped.
+    assert.strictEqual(run.passedCalls.length, 1);
+    assert.strictEqual(run.passedCalls[0].item.label, 'ComputeDoubles');
+
+    // The OTHER test items must be present in skippedCalls.
+    const skippedLabels = run.skippedCalls.map((s: any) => s.item.label);
+    assert.ok(skippedLabels.includes('ComputeZero'),
+      `ComputeZero should be skipped after cancel; got: ${skippedLabels.join(', ')}`);
+
+    // None of the skipped items duplicate a reported one.
+    const reported = new Set([
+      ...run.passedCalls.map((c: any) => c.item.id),
+      ...run.failedCalls.map((c: any) => c.item.id),
+      ...run.erroredCalls.map((c: any) => c.item.id),
+    ]);
+    for (const sk of run.skippedCalls) {
+      assert.ok(!reported.has(sk.item.id),
+        `item ${sk.item.label} should not appear in both reported and skipped sets`);
+    }
+
+    // run.end() must still be called.
+    assert.strictEqual(run.ended, true);
+  });
+
+  // M5: VS Code <1.93 doesn't expose TestMessageStackFrame. Monkey-patch
+  // it off the mock and verify the controller degrades gracefully —
+  // location is still set, stackTrace is left undefined.
+  test('older VS Code without TestMessageStackFrame: location still set, stackTrace absent (M5)', async () => {
+    const vscodeMock: any = require('vscode');
+    const saved = vscodeMock.TestMessageStackFrame;
+    delete vscodeMock.TestMessageStackFrame;
+    try {
+      const events: TestEvent[] = [
+        {
+          type: 'test',
+          name: 'ComputeZero',
+          status: 'fail',
+          message: 'boom',
+          stackFrames: [
+            { name: 'Helpers.Compute', source: { path: '/abs/Helpers.al' }, line: 100, column: 1 },
+          ],
+          alSourceFile: '/abs/Test.al',
+          alSourceLine: 17,
+          alSourceColumn: 9,
+        },
+      ];
+      const engine = new StubEngine([events, []], [makeEmpty(), makeEmpty()]);
+      const { mockController } = await makeController(engine);
+      const tokenSrc = new vscode.CancellationTokenSource();
+      await triggerRun(mockController, new vscode.TestRunRequest(), tokenSrc.token);
+      const run = mockController.__lastTestRun;
+
+      assert.strictEqual(run.failedCalls.length, 1);
+      const msg: any = run.failedCalls[0].message;
+      assert.strictEqual(msg.stackTrace, undefined,
+        'stackTrace must NOT be set when TestMessageStackFrame is unavailable');
+      assert.ok(msg.location, 'location should still be derived from alSourceFile/Line');
+      assert.strictEqual(msg.location.uri.fsPath, '/abs/Test.al');
+      assert.strictEqual(msg.location.range.start.line, 16);
+      assert.strictEqual(msg.location.range.start.character, 8);
+    } finally {
+      vscodeMock.TestMessageStackFrame = saved;
+    }
+  });
+
+  // M6: two sequential runs on the same controller must each produce
+  // their own __lastTestRun and reset reportedItemIds between runs.
+  test('two sequential runs on same controller resolve correctly (M6)', async () => {
+    const events1: TestEvent[] = [
+      { type: 'test', name: 'ComputeDoubles', status: 'pass', durationMs: 1 },
+    ];
+    const events2: TestEvent[] = [
+      { type: 'test', name: 'ComputeZero', status: 'fail', durationMs: 2, message: 'second-run failure' },
+    ];
+    // 4 invocations total (2 apps × 2 runs); the StubEngine clamps so
+    // we provide enough batches and summaries.
+    const engine = new StubEngine(
+      [events1, [], events2, []],
+      [makeEmpty(), makeEmpty(), makeEmpty(), makeEmpty()],
+    );
+    const { mockController } = await makeController(engine);
+
+    // Run 1.
+    const tokenSrc1 = new vscode.CancellationTokenSource();
+    await triggerRun(mockController, new vscode.TestRunRequest(), tokenSrc1.token);
+    const run1 = mockController.__lastTestRun;
+    assert.strictEqual(run1.passedCalls.length, 1, 'run 1: one passed');
+    assert.strictEqual(run1.failedCalls.length, 0, 'run 1: no failed');
+    assert.strictEqual(run1.ended, true);
+
+    // Run 2: the prior run's reportedItemIds must NOT leak. Cancelling
+    // the second run after both events would otherwise mark items
+    // covered by run 1 as already-reported and miss them in skipped.
+    const tokenSrc2 = new vscode.CancellationTokenSource();
+    await triggerRun(mockController, new vscode.TestRunRequest(), tokenSrc2.token);
+    const run2 = mockController.__lastTestRun;
+
+    // __lastTestRun must be the second run, not run1.
+    assert.notStrictEqual(run2, run1, '__lastTestRun must be overwritten between runs');
+
+    assert.strictEqual(run2.passedCalls.length, 0, 'run 2: no passed');
+    assert.strictEqual(run2.failedCalls.length, 1, 'run 2: one failed');
+    assert.strictEqual((run2.failedCalls[0].message as any).message, 'second-run failure');
+    assert.strictEqual(run2.ended, true);
+
+    // Sanity: original run1 spy state untouched.
+    assert.strictEqual(run1.passedCalls.length, 1);
   });
 });
