@@ -212,4 +212,57 @@ suite('ServerExecutionEngine v2 passthrough', () => {
     const result = await engine.runTests({ sourcePaths: ['./src'], coverage: true });
     assert.strictEqual(result.coverageV2, undefined);
   });
+
+  test('v2 flattens per-test messages into top-level result.messages', async () => {
+    const ev1: any = {
+      type: 'test', name: 'A', status: 'pass', durationMs: 1,
+      messages: ['hello from A', 'second from A'],
+    };
+    const ev2: any = {
+      type: 'test', name: 'B', status: 'pass', durationMs: 1,
+      messages: ['from B'],
+    };
+    const stub = new StubProcess({
+      type: 'summary', exitCode: 0, passed: 2, failed: 0, errors: 0, total: 2, protocolVersion: 2,
+    }, [ev1, ev2]);
+    const engine = new ServerExecutionEngine(stub as any);
+    const result = await engine.runTests({ sourcePaths: ['./src'] }, () => {});
+    assert.deepStrictEqual(result.messages, ['hello from A', 'second from A', 'from B']);
+    // Per-test still works:
+    assert.deepStrictEqual(result.tests[0].messages, ['hello from A', 'second from A']);
+    assert.deepStrictEqual(result.tests[1].messages, ['from B']);
+  });
+
+  test('v2 flattens per-test capturedValues into top-level result.capturedValues (v1 shape)', async () => {
+    const ev: any = {
+      type: 'test', name: 'A', status: 'pass', durationMs: 1,
+      capturedValues: [
+        { scopeName: 's1', objectName: 'CodeunitFoo', variableName: 'x', value: '1', statementId: 0 },
+        { scopeName: 's2', objectName: 'CodeunitFoo', variableName: 'y', value: 42, statementId: 1 },
+      ],
+    };
+    const stub = new StubProcess({
+      type: 'summary', exitCode: 0, passed: 1, failed: 0, errors: 0, total: 1, protocolVersion: 2,
+    }, [ev]);
+    const engine = new ServerExecutionEngine(stub as any);
+    const result = await engine.runTests({ sourcePaths: ['./src'] });
+    assert.strictEqual(result.capturedValues.length, 2);
+    // v1 shape: sourceFile (from objectName), value as string.
+    assert.strictEqual(result.capturedValues[0].sourceFile, 'CodeunitFoo');
+    assert.strictEqual(result.capturedValues[0].variableName, 'x');
+    assert.strictEqual(result.capturedValues[0].value, '1');
+    // Numeric value JSON-stringified per v2ToV1Captured.
+    assert.strictEqual(result.capturedValues[1].value, '42');
+  });
+
+  test('v2 with no per-test data → empty top-level arrays', async () => {
+    const ev: any = { type: 'test', name: 'A', status: 'pass', durationMs: 1 };
+    const stub = new StubProcess({
+      type: 'summary', exitCode: 0, passed: 1, failed: 0, errors: 0, total: 1, protocolVersion: 2,
+    }, [ev]);
+    const engine = new ServerExecutionEngine(stub as any);
+    const result = await engine.runTests({ sourcePaths: ['./src'] });
+    assert.deepStrictEqual(result.messages, []);
+    assert.deepStrictEqual(result.capturedValues, []);
+  });
 });

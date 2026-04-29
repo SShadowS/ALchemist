@@ -1,6 +1,7 @@
 import { ExecutionEngine, RunTestsRequest, ExecuteScratchRequest } from './executionEngine';
 import { ExecutionResult, TestResult } from '../runner/outputParser';
 import { TestEvent, FileCoverage, ProtocolLine } from './protocolV2Types';
+import { v2ToV1Captured } from './captureValueAdapter';
 
 const STATUS_MAP: Record<string, 'passed' | 'failed' | 'errored'> = {
   pass: 'passed',
@@ -87,11 +88,14 @@ export class ServerExecutionEngine implements ExecutionEngine {
     return {
       mode: 'test',
       tests,
-      // v2: per-test messages / capturedValues live on each TestResult (see mapTestEvent).
-      // Top-level messages[]/capturedValues[] are EMPTY on v2 — DecorationManager will
-      // be rewired in T9 to consume them per-test from result.tests[i].messages /
-      // result.tests[i].capturedValues. v1 callers keep getting flat arrays here.
-      messages: isV2Summary ? [] : (response.messages ?? []),
+      // v2: per-test messages / capturedValues also live on each TestResult. The
+      // top-level fields are populated by FLATTENING across tests so existing v1
+      // consumers (DecorationManager.applyInlineMessages, OutputChannel) keep
+      // rendering. Per-test scoping is also available via TestResult.{messages,
+      // capturedValues} for v2-aware consumers (DecorationManager.setCapturedValuesForTest).
+      messages: isV2Summary
+        ? tests.flatMap(t => t.messages ?? [])
+        : (response.messages ?? []),
       stderrOutput: [],
       summary,
       coverage: (!isV2Summary && Array.isArray(response.coverage)) ? response.coverage : [],
@@ -100,8 +104,11 @@ export class ServerExecutionEngine implements ExecutionEngine {
         : undefined,
       exitCode: response.exitCode ?? 0,
       durationMs: Date.now() - startTime,
-      // v2: per-test capturedValues live on each TestResult — see comment above on `messages`.
-      capturedValues: isV2Summary ? [] : (response.capturedValues ?? []),
+      // v2: per-test capturedValues also live on each TestResult. Top-level
+      // fields are flattened for v1 consumers. v2-aware consumers can use per-test fields.
+      capturedValues: isV2Summary
+        ? tests.flatMap(t => (t.capturedValues ?? []).map(v2ToV1Captured))
+        : (response.capturedValues ?? []),
       cached: response.cached ?? false,
       cancelled: response.cancelled === true,
       protocolVersion: typeof response.protocolVersion === 'number' ? response.protocolVersion : undefined,
