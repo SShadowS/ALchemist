@@ -130,6 +130,16 @@ export class AlchemistTestController {
     this.decorationManager = dm;
   }
 
+  /**
+   * Read-only access to the compound-id TestItem map. Used by the cursor-driven
+   * active-test selector (extension.ts). The map updates on
+   * `refreshTestsFromModel`; the returned reference reflects the current state
+   * but is not stable across refreshes.
+   */
+  getTestItemsById(): ReadonlyMap<string, vscode.TestItem> {
+    return this.testItemsById;
+  }
+
   /** @deprecated use refreshTestsFromModel; legacy path retained for backward compat. Will be removed once all callers migrate. */
   async refreshTests(workspacePath: string): Promise<void> {
     const codeunits = await discoverTestsInWorkspace(workspacePath);

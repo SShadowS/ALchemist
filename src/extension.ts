@@ -10,6 +10,7 @@ import { AlchemistOutputChannel } from './output/outputChannel';
 import { StatusBarManager } from './output/statusBar';
 import { ScratchManager, isScratchFile, isProjectAware, resolveScratchProjectApp } from './scratch/scratchManager';
 import { AlchemistTestController } from './testing/testController';
+import { findTestItemAtPosition } from './testing/testFinder';
 import { IterationStore } from './iteration/iterationStore';
 import { IterationCodeLensProvider, IterationStepperDecoration } from './iteration/iterationCodeLensProvider';
 import { registerIterationCommands, findLoopAtCursor } from './iteration/iterationCommands';
@@ -214,6 +215,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       statusBar.hideIterationStepper();
     }
   }
+
+  // --- Cursor-driven active-test selection (Plan E2.1 Task 4) ---
+  //
+  // When the user moves the cursor into a [Test] proc, that test becomes
+  // active in DecorationManager and we re-apply decorations so only that
+  // test's captures are shown inline. This complements the streaming-order
+  // heuristic (Option A) wired in TestController.handleStreamingEvent.
+  context.subscriptions.push(
+    vscode.window.onDidChangeTextEditorSelection((e) => {
+      if (!testController || !decorationManager) { return; }
+      const editor = e.textEditor;
+      if (editor.document.languageId !== 'al') { return; }
+      const items = testController.getTestItemsById();
+      const item = findTestItemAtPosition(items, editor.document.uri, editor.selection.active);
+      decorationManager.setActiveTest(item?.label);
+      // Re-apply decorations to reflect the new active test's captures.
+      if (lastExecutionResult) {
+        const wsPath = workspaceModel.getAppContaining(editor.document.uri.fsPath)?.path
+          ?? path.dirname(editor.document.uri.fsPath);
+        decorationManager.applyResults(editor, lastExecutionResult, wsPath);
+      }
+    })
+  );
 
   // --- On-save handler ---
 

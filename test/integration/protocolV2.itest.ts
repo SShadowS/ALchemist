@@ -259,4 +259,34 @@ suite('Integration — Plan E2 protocol v2 streaming', () => {
       vscode.tests.createTestController = realCreate;
     }
   });
+
+  test('cursor-driven setActiveTest helper resolves a TestItem in the controller', async () => {
+    const vscode = require('vscode');
+    const model = new WorkspaceModel([path.join(FIX, 'multi-app')]);
+    await model.scan();
+    const engine = new FakeStreamingEngine([], {
+      type: 'summary', exitCode: 0, passed: 0, failed: 0, errors: 0, total: 0, protocolVersion: 2,
+    });
+    const controller = new AlchemistTestController(() => engine, model, () => {});
+    await controller.refreshTestsFromModel(model);
+
+    const items = controller.getTestItemsById();
+    assert.ok(items.size > 0, 'controller must populate testItemsById from fixture');
+
+    // Find the first test-prefixed item with a uri + range.
+    let target: any;
+    for (const item of items.values()) {
+      if (item.id.startsWith('test-') && item.uri && item.range) {
+        target = item;
+        break;
+      }
+    }
+    assert.ok(target, 'fixture must have at least one test item with uri + range');
+
+    const { findTestItemAtPosition } = require('../../src/testing/testFinder');
+    const found = findTestItemAtPosition(items, target.uri, target.range.start);
+    assert.strictEqual(found?.label, target.label);
+
+    controller.dispose();
+  });
 });
