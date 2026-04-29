@@ -37,6 +37,8 @@ Live execution and inline feedback for AL (Business Central) — like [Quokka.js
 | **Theme-aware colors** | Inline decoration colors adapt to light/dark/high-contrast themes and are user-customizable |
 | **Auto-install** | AL.Runner is downloaded automatically on first use |
 | **Multi-app workspace** | Discovers every AL app across every workspace folder; Test Explorer groups by app; save routes tests via `app.json` dependencies |
+| **Precision-tier routing** | Tree-sitter symbol/ref index narrows save-triggered tests to affected apps; falls back safely on parse errors |
+| **Server-cached execution** | Persistent AL.Runner daemon with per-file caches; warm runs faster than cold one-shot |
 
 ## Prerequisites
 
@@ -143,6 +145,7 @@ For project-aware scratch files, add `//alchemist: project` as the first line to
 | ALchemist: Last Iteration | `Ctrl+Shift+A End` | Jump to last iteration |
 | ALchemist: Show All Iterations | `Ctrl+Shift+A A` | Show aggregate view of all iterations |
 | ALchemist: Open Iteration Table | `Ctrl+Shift+A T` | Open the iteration table panel |
+| ALchemist: Run Wider Scope | `Ctrl+Shift+A Shift+R` | Force fallback (broader) test scope for the active file |
 
 ## Key Files
 

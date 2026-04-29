@@ -2,6 +2,15 @@
 'use strict';
 
 const path = require('path');
+const { execSync } = require('child_process');
+
+class CopyWasmPlugin {
+  apply(compiler) {
+    compiler.hooks.afterEmit.tap('CopyWasmPlugin', () => {
+      execSync('node scripts/copy-wasm.js', { stdio: 'inherit', cwd: path.resolve(__dirname) });
+    });
+  }
+}
 
 /** @type {import('webpack').Configuration} */
 const config = {
@@ -28,7 +37,8 @@ const config = {
       }
     ]
   },
-  devtool: 'nosources-source-map'
+  devtool: 'nosources-source-map',
+  plugins: [new CopyWasmPlugin()]
 };
 
 module.exports = config;

@@ -2,7 +2,7 @@
   "name": "al-chemist",
   "displayName": "ALchemist - AL Live Runner",
   "description": "Quokka-style live execution and inline feedback for AL (Business Central)",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "SShadowSdk",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -137,6 +137,10 @@
       {
         "command": "alchemist.iterationTable",
         "title": "ALchemist: Open Iteration Table"
+      },
+      {
+        "command": "alchemist.runWiderScope",
+        "title": "ALchemist: Run Wider Scope (Force Fallback)"
       }
     ],
     "keybindings": [
@@ -181,6 +185,11 @@
         "command": "alchemist.iterationTable",
         "key": "ctrl+shift+a t",
         "when": "alchemist.hasIterationData"
+      },
+      {
+        "command": "alchemist.runWiderScope",
+        "key": "ctrl+shift+a shift+r",
+        "when": "editorTextFocus && editorLangId == al"
       }
     ],
     "configuration": {
@@ -258,7 +267,11 @@
         },
         "alchemist.iterationHoverDetail": {
           "type": "string",
-          "enum": ["minimal", "values", "rich"],
+          "enum": [
+            "minimal",
+            "values",
+            "rich"
+          ],
           "default": "rich",
           "description": "Detail level for iteration hover: minimal (nav only), values (nav + variables), rich (nav + variables + messages)."
         },
@@ -280,7 +293,9 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "fast-xml-parser": "^5.5.11"
+    "@sshadows/tree-sitter-al": "^2.5.0",
+    "fast-xml-parser": "^5.5.11",
+    "web-tree-sitter": "^0.26.8"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
