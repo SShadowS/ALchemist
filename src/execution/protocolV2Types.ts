@@ -35,6 +35,14 @@ export interface CapturedValue {
   scopeName: string;
   /** Optional in protocol; emitter currently always populates. */
   objectName?: string;
+  /**
+   * Per-capture AL source file (relative path, forward-slash) — the file
+   * that owns this capture's `objectName`. Resolved by the runner via its
+   * SourceFileMapper. When present, ALchemist's inline-decoration filter
+   * uses this directly; falls back to the test event's `alSourceFile`,
+   * then to `objectName` (lossy) when this is undefined.
+   */
+  alSourceFile?: string;
   variableName: string;
   value: unknown;       // schema permits any JSON
   statementId: number;

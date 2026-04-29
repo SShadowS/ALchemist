@@ -282,4 +282,27 @@ suite('v2ToV1Captured translator', () => {
     const v1 = v2ToV1Captured(v2, 'src/Foo.al');
     assert.strictEqual(v1.sourceFile, 'src/Foo.al');
   });
+
+  test('v2ToV1Captured prefers capture own alSourceFile over fallback', () => {
+    const { v2ToV1Captured } = require('../../src/execution/captureValueAdapter');
+    const v2: any = {
+      scopeName: 's',
+      objectName: 'CU1',
+      alSourceFile: 'CU1.al',  // per-capture (most specific)
+      variableName: 'myint',
+      value: '1',
+      statementId: 0,
+    };
+    // Fallback would be the test event's alSourceFile (the test codeunit's file).
+    // Capture's own alSourceFile must win.
+    const v1 = v2ToV1Captured(v2, 'TestCU1.al');
+    assert.strictEqual(v1.sourceFile, 'CU1.al');
+  });
+
+  test('v2ToV1Captured without per-capture alSourceFile falls back to event arg', () => {
+    const { v2ToV1Captured } = require('../../src/execution/captureValueAdapter');
+    const v2: any = { scopeName: 's', objectName: 'CU1', variableName: 'x', value: '1', statementId: 0 };
+    const v1 = v2ToV1Captured(v2, 'TestCU1.al');
+    assert.strictEqual(v1.sourceFile, 'TestCU1.al');
+  });
 });
