@@ -1,6 +1,6 @@
 import { ExecutionEngine, RunTestsRequest, ExecuteScratchRequest } from './executionEngine';
 import { ExecutionResult, TestResult } from '../runner/outputParser';
-import { TestEvent, FileCoverage } from './protocolV2Types';
+import { TestEvent, FileCoverage, ProtocolLine } from './protocolV2Types';
 
 const STATUS_MAP: Record<string, 'passed' | 'failed' | 'errored'> = {
   pass: 'passed',
@@ -31,12 +31,12 @@ export class ServerExecutionEngine implements ExecutionEngine {
     if (req.testFilter) { payload.testFilter = req.testFilter; }
 
     const accumulated: TestResult[] = [];
-    const onEvent = (event: any) => {
-      if (event && event.type === 'test') {
+    const onEvent = (event: ProtocolLine) => {
+      if (event.type === 'test') {
         accumulated.push(this.mapTestEvent(event));
-        if (onTest) { onTest(event as TestEvent); }
+        if (onTest) { onTest(event); }
       }
-      // 'progress' events ignored for now (future use)
+      // 'progress' / 'ack' / 'summary' types ignored here; summary terminates upstream.
     };
 
     let response: any;
@@ -46,12 +46,20 @@ export class ServerExecutionEngine implements ExecutionEngine {
       return failureResult(err.message ?? String(err), startTime, 'test');
     }
 
-    if (response.error && !response.type) {
+    // Either v1 error response (no type) or v2 error-summary
+    // (type === 'summary' carrying a string `error`). Both should fail fast.
+    if (response.error && typeof response.error === 'string') {
       return failureResult(response.error, startTime, 'test');
     }
 
+    // Tighten v2 discriminator: ONLY treat as v2 when type==='summary' AND
+    // protocolVersion===2. A hypothetical v1 server emitting {type:'summary'}
+    // without protocolVersion falls through to the v1 path that reads
+    // response.tests[] inline.
+    const isV2Summary = response.type === 'summary' && response.protocolVersion === 2;
+
     let tests: TestResult[];
-    if (response.type === 'summary') {
+    if (isV2Summary) {
       // v2 streaming path — events accumulated above.
       tests = accumulated;
     } else {
@@ -60,7 +68,7 @@ export class ServerExecutionEngine implements ExecutionEngine {
       tests = rawTests.map((t: any) => this.mapV1Test(t));
     }
 
-    const summary = response.type === 'summary'
+    const summary = isV2Summary
       ? {
           passed: response.passed ?? 0,
           failed: response.failed ?? 0,
@@ -79,16 +87,21 @@ export class ServerExecutionEngine implements ExecutionEngine {
     return {
       mode: 'test',
       tests,
-      messages: response.messages ?? [],
+      // v2: per-test messages / capturedValues live on each TestResult (see mapTestEvent).
+      // Top-level messages[]/capturedValues[] are EMPTY on v2 — DecorationManager will
+      // be rewired in T9 to consume them per-test from result.tests[i].messages /
+      // result.tests[i].capturedValues. v1 callers keep getting flat arrays here.
+      messages: isV2Summary ? [] : (response.messages ?? []),
       stderrOutput: [],
       summary,
-      coverage: (response.type !== 'summary' && Array.isArray(response.coverage)) ? response.coverage : [],
-      coverageV2: response.type === 'summary' && Array.isArray(response.coverage)
+      coverage: (!isV2Summary && Array.isArray(response.coverage)) ? response.coverage : [],
+      coverageV2: isV2Summary && Array.isArray(response.coverage)
         ? (response.coverage as FileCoverage[])
         : undefined,
       exitCode: response.exitCode ?? 0,
       durationMs: Date.now() - startTime,
-      capturedValues: response.capturedValues ?? [],
+      // v2: per-test capturedValues live on each TestResult — see comment above on `messages`.
+      capturedValues: isV2Summary ? [] : (response.capturedValues ?? []),
       cached: response.cached ?? false,
       cancelled: response.cancelled === true,
       protocolVersion: typeof response.protocolVersion === 'number' ? response.protocolVersion : undefined,

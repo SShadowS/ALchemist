@@ -24,11 +24,13 @@ suite('ServerExecutionEngine v2 passthrough', () => {
       type: 'summary', exitCode: 0, passed: 0, failed: 0, errors: 0, total: 0, protocolVersion: 2,
     });
     const engine = new ServerExecutionEngine(stub as any);
-    await engine.runTests({
+    const result = await engine.runTests({
       sourcePaths: ['./src'],
       testFilter: { procNames: ['Foo'] },
     });
     assert.deepStrictEqual(stub.lastPayload.testFilter, { procNames: ['Foo'] });
+    // Lock the empty-stream case: no test events emitted → no accumulated tests.
+    assert.deepStrictEqual(result.tests, []);
   });
 
   test('forwards coverage flag', async () => {
@@ -150,5 +152,64 @@ suite('ServerExecutionEngine v2 passthrough', () => {
     assert.strictEqual(result.tests.length, 0);
     assert.deepStrictEqual(result.stderrOutput, ['sourcePaths is required']);
     assert.strictEqual(result.exitCode, 1);
+  });
+
+  test('v2 error-summary routes to failureResult', async () => {
+    // A v2 server emits validation failures as a Summary line carrying `error`.
+    // The early-error guard must catch this case (broadened from `!response.type`).
+    const stub = new StubProcess({
+      type: 'summary', error: 'sourcePaths is required',
+      exitCode: 2, passed: 0, failed: 0, errors: 0, total: 0, protocolVersion: 2,
+    });
+    const engine = new ServerExecutionEngine(stub as any);
+    const result = await engine.runTests({ sourcePaths: [] });
+    assert.deepStrictEqual(result.stderrOutput, ['sourcePaths is required']);
+    assert.strictEqual(result.tests.length, 0);
+    assert.strictEqual(result.exitCode, 1);  // failureResult always uses 1
+  });
+
+  test('executeScratch does not pass onEvent', async () => {
+    const stub = new StubProcess({
+      tests: [], messages: ['hello'], capturedValues: [],
+      iterations: [], exitCode: 0, passed: 0, failed: 0, errors: 0, total: 0,
+    });
+    const engine = new ServerExecutionEngine(stub as any);
+    await engine.executeScratch({ inlineCode: 'message(\'hi\');' });
+    assert.strictEqual(stub.lastOnEvent, undefined,
+      'executeScratch must NOT pass onEvent — scratch is single-response');
+  });
+
+  test('all v2 flags compose into payload', async () => {
+    const stub = new StubProcess({
+      type: 'summary', exitCode: 0, passed: 0, failed: 0, errors: 0, total: 0, protocolVersion: 2,
+    });
+    const engine = new ServerExecutionEngine(stub as any);
+    await engine.runTests({
+      sourcePaths: ['./src'],
+      iterationTracking: true,
+      coverage: true,
+      cobertura: true,
+      testFilter: { codeunitNames: ['CalcTest'], procNames: ['Foo'] },
+    });
+    assert.deepStrictEqual(stub.lastPayload, {
+      command: 'runtests',
+      sourcePaths: ['./src'],
+      captureValues: true,           // default
+      iterationTracking: true,
+      coverage: true,
+      cobertura: true,
+      testFilter: { codeunitNames: ['CalcTest'], procNames: ['Foo'] },
+    });
+  });
+
+  test('malformed coverage (non-array) leaves coverageV2 undefined', async () => {
+    const stub = new StubProcess({
+      type: 'summary', exitCode: 0, passed: 0, failed: 0, errors: 0, total: 0,
+      coverage: 'not an array',  // intentionally wrong shape
+      protocolVersion: 2,
+    });
+    const engine = new ServerExecutionEngine(stub as any);
+    const result = await engine.runTests({ sourcePaths: ['./src'], coverage: true });
+    assert.strictEqual(result.coverageV2, undefined);
   });
 });
