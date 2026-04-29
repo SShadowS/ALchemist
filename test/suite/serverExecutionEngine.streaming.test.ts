@@ -236,6 +236,7 @@ suite('ServerExecutionEngine v2 passthrough', () => {
   test('v2 flattens per-test capturedValues into top-level result.capturedValues (v1 shape)', async () => {
     const ev: any = {
       type: 'test', name: 'A', status: 'pass', durationMs: 1,
+      alSourceFile: 'src/Calc.Codeunit.al',
       capturedValues: [
         { scopeName: 's1', objectName: 'CodeunitFoo', variableName: 'x', value: '1', statementId: 0 },
         { scopeName: 's2', objectName: 'CodeunitFoo', variableName: 'y', value: 42, statementId: 1 },
@@ -247,8 +248,8 @@ suite('ServerExecutionEngine v2 passthrough', () => {
     const engine = new ServerExecutionEngine(stub as any);
     const result = await engine.runTests({ sourcePaths: ['./src'] });
     assert.strictEqual(result.capturedValues.length, 2);
-    // v1 shape: sourceFile (from objectName), value as string.
-    assert.strictEqual(result.capturedValues[0].sourceFile, 'CodeunitFoo');
+    // v1 shape: sourceFile (from alSourceFile), value as string.
+    assert.strictEqual(result.capturedValues[0].sourceFile, 'src/Calc.Codeunit.al');
     assert.strictEqual(result.capturedValues[0].variableName, 'x');
     assert.strictEqual(result.capturedValues[0].value, '1');
     // Numeric value JSON-stringified per v2ToV1Captured.
@@ -264,5 +265,21 @@ suite('ServerExecutionEngine v2 passthrough', () => {
     const result = await engine.runTests({ sourcePaths: ['./src'] });
     assert.deepStrictEqual(result.messages, []);
     assert.deepStrictEqual(result.capturedValues, []);
+  });
+});
+
+suite('v2ToV1Captured translator', () => {
+  test('v2ToV1Captured without alSourceFile falls back to objectName (legacy)', () => {
+    const { v2ToV1Captured } = require('../../src/execution/captureValueAdapter');
+    const v2: any = { scopeName: 's', objectName: 'Codeunit Foo', variableName: 'x', value: '1', statementId: 0 };
+    const v1 = v2ToV1Captured(v2);
+    assert.strictEqual(v1.sourceFile, 'Codeunit Foo');
+  });
+
+  test('v2ToV1Captured with alSourceFile prefers it over objectName', () => {
+    const { v2ToV1Captured } = require('../../src/execution/captureValueAdapter');
+    const v2: any = { scopeName: 's', objectName: 'Codeunit Foo', variableName: 'x', value: '1', statementId: 0 };
+    const v1 = v2ToV1Captured(v2, 'src/Foo.al');
+    assert.strictEqual(v1.sourceFile, 'src/Foo.al');
   });
 });

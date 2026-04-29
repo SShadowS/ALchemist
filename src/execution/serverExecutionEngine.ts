@@ -107,7 +107,8 @@ export class ServerExecutionEngine implements ExecutionEngine {
       // v2: per-test capturedValues also live on each TestResult. Top-level
       // fields are flattened for v1 consumers. v2-aware consumers can use per-test fields.
       capturedValues: isV2Summary
-        ? tests.flatMap(t => (t.capturedValues ?? []).map(v2ToV1Captured))
+        ? tests.flatMap(t =>
+            (t.capturedValues ?? []).map(cv => v2ToV1Captured(cv, t.alSourceFile)))
         : (response.capturedValues ?? []),
       cached: response.cached ?? false,
       cancelled: response.cancelled === true,

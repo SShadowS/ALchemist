@@ -339,7 +339,7 @@ export class AlchemistTestController {
     if (this.decorationManager) {
       if (event.capturedValues && event.capturedValues.length > 0) {
         // Translate v2 CapturedValue → v1 CapturedValue shape via the adapter.
-        const translated = event.capturedValues.map(v2ToV1Captured);
+        const translated = event.capturedValues.map(cv => v2ToV1Captured(cv, event.alSourceFile));
         this.decorationManager.setCapturedValuesForTest(event.name, translated);
       }
       // Option A active-test heuristic: the most-recent streaming test

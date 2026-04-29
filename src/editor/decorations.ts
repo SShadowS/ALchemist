@@ -199,7 +199,9 @@ export class DecorationManager {
     // ("Save-triggered runs use the v1 result-application path").
     let captured: CapturedValue[];
     if (result.protocolVersion === 2) {
-      captured = result.tests.flatMap(t => (t.capturedValues ?? []).map(v2ToV1Captured));
+      captured = result.tests.flatMap(t =>
+        (t.capturedValues ?? []).map(cv => v2ToV1Captured(cv, t.alSourceFile))
+      );
     } else {
       captured = result.capturedValues;
     }
