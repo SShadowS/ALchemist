@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.3 (2026-04-29)
+
+### Fixes
+
+- **Inline captured-value decorations now actually render on v2 results.** v0.5.2 fixed the per-capture `alSourceFile` so the file-path filter in `DecorationManager.applyInlineCapturedValues` matched correctly. But the same method ALSO needed coverage line data to map each capture's `statementId` → editor line — and `applyResults` was passing `result.coverage` (the legacy v1 cobertura-shape array, which is empty for v2 results because v2 routes coverage to `result.coverageV2` instead). Empty coverage → early return → no decorations. The fix translates `coverageV2` → v1 shape on-the-fly inside `applyResults` and passes that to `applyInlineCapturedValues`.
+
+### Tests
+
+- Added regression test `v2 applyResults with coverageV2 + per-capture alSourceFile renders inline captures (regression for the bug we shipped)` that drives `applyResults` with realistic v2 data and asserts `setDecorations` fires on the captured-value decoration type with non-empty ranges. This closes a previously-uncovered seam between layer tests (engine flatten, captureValueAdapter, per-test scope) and end-to-end rendering.
+
+### Why we missed this
+
+Tests existed for each individual layer (engine output shape, capture translation, per-test scope, coverage adapter) but no test exercised the seam where `applyResults` hands a v2 result to `applyInlineCapturedValues`. The implicit assumption — "all layers correct ⇒ rendering correct" — broke at the data-routing seam where v1's `coverage` field stayed empty for v2 callers. The new regression test closes that gap.
+
 ## 0.5.2 (2026-04-29)
 
 ### Fixes

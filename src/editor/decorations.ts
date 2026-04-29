@@ -205,7 +205,21 @@ export class DecorationManager {
 
     this.capturedValuesByTest.set(LEGACY_SCOPE_KEY, captured);
     if (captured.length > 0) {
-      this.applyInlineCapturedValues(editor, captured, result.coverage, workspacePath);
+      // applyInlineCapturedValues uses per-file coverage line numbers (v1 cobertura
+      // shape) to map each capture's statementId into an editor line. For v2
+      // results, result.coverage is empty (we route v2 to result.coverageV2);
+      // without translating, the filter at line 445 returns undefined and
+      // inline rendering silently no-ops. Translate on-the-fly so the v1
+      // codepath inside applyInlineCapturedValues sees the right shape.
+      const coverageForFilter: CoverageEntry[] = v2CoverageActive
+        ? (result.coverageV2 ?? []).map(fc => ({
+            className: '',
+            filename: fc.file,
+            lineRate: fc.totalStatements > 0 ? fc.hitStatements / fc.totalStatements : 0,
+            lines: fc.lines.map(l => ({ number: l.line, hits: l.hits })),
+          }))
+        : result.coverage;
+      this.applyInlineCapturedValues(editor, captured, coverageForFilter, workspacePath);
     }
   }
 

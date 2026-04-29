@@ -288,6 +288,68 @@ suite('DecorationManager — coverageV2 retires custom gutter', () => {
       dm.dispose();
     }
   });
+
+  test('v2 applyResults with coverageV2 + per-capture alSourceFile renders inline captures (regression for the bug we shipped)', () => {
+    // The bug: applyResults passed result.coverage (empty for v2) into
+    // applyInlineCapturedValues, which uses it to map statementId→line.
+    // Empty coverage → early return → no decorations. After the fix,
+    // coverageV2 is translated on-the-fly so the v1 codepath inside
+    // applyInlineCapturedValues sees real line data.
+    const dm = new DecorationManager(__dirname);
+    const calls: DecorationCall[] = [];
+    const path = require('path') as typeof import('path');
+    const workspacePath = path.resolve(__dirname, 'fixture-ws');
+    const filePath = path.join(workspacePath, 'CU1.al');
+    const fakeEditor = makeFakeEditor(filePath, calls);
+
+    const v2Result: ExecutionResult = {
+      ...makeV2Result([
+        {
+          name: 'TestProc', status: 'passed', durationMs: 1,
+          message: undefined, stackTrace: undefined,
+          alSourceLine: undefined, alSourceColumn: undefined,
+          alSourceFile: 'TestCU1.al',
+          capturedValues: [
+            // Each capture carries its own alSourceFile (the new f2d2bb3
+            // shape). The translator should pick this up regardless of
+            // the test event's alSourceFile.
+            { scopeName: 's', objectName: 'CU1', alSourceFile: 'CU1.al', variableName: 'myint', value: '1', statementId: 0 },
+            { scopeName: 's', objectName: 'CU1', alSourceFile: 'CU1.al', variableName: 'myint', value: '2', statementId: 1 },
+          ],
+        } as any,
+      ]),
+      // v2 results route coverage to coverageV2; the legacy `coverage` array stays empty.
+      coverage: [],
+      coverageV2: [
+        {
+          file: 'CU1.al',
+          lines: [
+            { line: 1, hits: 1 },   // statementId 0 → line 1 (within fake editor's 5 lines)
+            { line: 3, hits: 1 },   // statementId 1 → line 3
+          ],
+          totalStatements: 2,
+          hitStatements: 2,
+        },
+      ],
+    };
+
+    dm.applyResults(fakeEditor, v2Result, workspacePath);
+
+    // The captured-value decoration type should have been set with at least
+    // one range. If the bug regresses, this stays empty (early return inside
+    // applyInlineCapturedValues because coverage was empty).
+    const captureDecorationCalls = calls.filter(c =>
+      c.type && c.type.options && (c.type.options.after || c.type.options.before),
+    );
+    const nonEmptyCaptureCalls = captureDecorationCalls.filter(c => c.ranges.length > 0);
+    assert.ok(
+      nonEmptyCaptureCalls.length > 0,
+      `expected at least one captured-value decoration call with non-empty ranges; got ${captureDecorationCalls.length} call(s) total, all empty. ` +
+      `If you see this, the v2 → v1 coverage translation in applyResults regressed (Plan E2.1 v0.5.3 fix).`,
+    );
+
+    dm.dispose();
+  });
 });
 
 // --- Test helpers ---------------------------------------------------------
