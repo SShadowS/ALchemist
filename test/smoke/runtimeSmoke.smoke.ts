@@ -130,10 +130,15 @@ suite('Runtime smoke — full extension activation against real ALProject4', fun
     // for myInt at the same statementId. If dmCaptures collapsed them
     // to 1, the dedup-to-last regression returned.
     const myIntCaptures = dmCaptures.filter(cv => cv.variableName.toLowerCase() === 'myint');
-    assert.ok(
-      myIntCaptures.length > 1,
-      `expected multiple myInt captures for the for-loop; got ${myIntCaptures.length}. ` +
-      'If only 1, applyInlineCapturedValues regressed back to dedup-to-last.',
+    // CU1.al has `myInt := 1` (line 9) then `for i := 1 to 10 do myInt += i` (line 13).
+    // That's 11 captures total: 1 from the init, then 10 from loop iterations.
+    // Pin the count so a partial dedup regression (e.g. collapsing 11 → 3) also fails.
+    assert.strictEqual(
+      myIntCaptures.length,
+      11,
+      `expected exactly 11 myInt captures (1 init + 10 loop iterations); ` +
+      `got ${myIntCaptures.length}. ` +
+      `If <11, applyInlineCapturedValues regressed back to a dedup form.`,
     );
 
     console.log(`[runtime smoke] ${captures.length} captures, ${coverageV2.length} coverage files, ${dmCaptures.length} dm captures — all green`);

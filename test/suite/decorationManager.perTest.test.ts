@@ -574,6 +574,10 @@ suite('applyInlineCapturedValues — compact loop rendering', () => {
     // statementId 0 maps to the first covered line (line 1 in fixture below).
     const v2Captures = [];
     const computedValues: string[] = [];
+    // Generate 10 arbitrary distinct values. The exact numeric sequence is
+    // not asserted (the regex only checks `first ‥ last  (×10)` SHAPE), so
+    // these don't need to match a real AL `for i := 1 to 10 do myInt += i`
+    // sequence. The test asserts compact-form rendering, not value content.
     for (let v = 2, sum = 1; computedValues.length < 10; v++) {
       sum += v;
       computedValues.push(String(sum));

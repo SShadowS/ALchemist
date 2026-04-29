@@ -549,6 +549,12 @@ export class DecorationManager {
 
     const decorations: vscode.DecorationOptions[] = [];
 
+    // Captures arrive in execution order from AL.Runner (Pipeline.cs runs
+    // tests sequentially with capture instrumentation injected per
+    // statement). formatCaptureGroup uses values[0] and values[length-1]
+    // as "first" and "last" — that's correct because Map insertion order
+    // (which controls iteration here) preserves the order captures were
+    // pushed, which is execution order.
     for (const [, group] of groupedValues) {
       const head = group[0];
       // Map statementId to a covered line (best effort: statementId as index into covered lines)

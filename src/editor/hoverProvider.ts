@@ -195,12 +195,21 @@ export class CoverageHoverProvider implements vscode.HoverProvider {
       if (matchingValues.length === 1) {
         markdown.appendCodeblock(`${hoveredWord} = ${matchingValues[0].value}`, 'al');
       } else {
-        // Full series, one assignment per line
-        const block = matchingValues
+        // Full series, one assignment per line. Cap at HOVER_CAPTURE_LIMIT
+        // for hover legibility — real loops can produce thousands of
+        // captures and rendering them all makes the hover unusable.
+        const HOVER_CAPTURE_LIMIT = 50;
+        const visible = matchingValues.slice(0, HOVER_CAPTURE_LIMIT);
+        const omitted = matchingValues.length - visible.length;
+        const block = visible
           .map((cv, i) => `${hoveredWord} = ${cv.value}  // capture #${i + 1}`)
           .join('\n');
         markdown.appendCodeblock(block, 'al');
-        markdown.appendMarkdown(`\n_${matchingValues.length} captures total_\n`);
+        if (omitted > 0) {
+          markdown.appendMarkdown(`\n_${matchingValues.length} captures total — showing first ${HOVER_CAPTURE_LIMIT}, ${omitted} omitted_\n`);
+        } else {
+          markdown.appendMarkdown(`\n_${matchingValues.length} captures total_\n`);
+        }
       }
       markdown.appendMarkdown('\n');
     }
