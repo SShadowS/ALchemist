@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.5.0 (2026-04-29)
+
+### Features
+
+- **AL.Runner protocol v2 streaming** — Test Explorer pass/fail marks now update **as each test completes**, not after the whole run finishes. Live progress via per-test events from a streaming NDJSON consumer (requires AL.Runner with protocol v2; older runners fall back transparently to v1 single-response mode).
+- **Clickable stack frames on failures** — Test failures in Test Results now carry structured stack frames (`vscode.TestMessageStackFrame[]`). Each user-code `.al` frame is clickable and jumps directly to the failing line. BC runtime / mock frames are dimmed via DAP-style `presentationHint`.
+- **Native VS Code coverage rendering** — Green/red gutter icons + Coverage View panel are now powered by `vscode.TestRun.addCoverage()`. The Run with Coverage profile lights up automatically on protocol v2.
+- **Per-test captured-value scoping** — `DecorationManager` now stores values per test. When the user selects a test in Test Explorer, only that test's captures display.
+- **Mid-run cancellation** — Click Stop in Test Explorer mid-run; tests-in-flight finish cooperatively, remaining tests are marked skipped, and the AL.Runner daemon stays warm for the next request.
+- **Per-test `testFilter`** — Right-click → Run on a single test now narrows the actual execution rather than re-running every test in the codeunit.
+- **Status bar protocol version** — Hover the AL.Runner status bar item to see whether you're on protocol v1 (upgrade for live updates) or v2.
+
+### Internal
+
+- New `coverageAdapter` translates AL.Runner `FileCoverage[]` into `vscode.FileCoverage[]` (1-indexed → 0-indexed Position; statement detail returned via `loadDetailedCoverage` callback through a `WeakMap`).
+- New `protocolV2Types.ts` with `TestEvent` / `Summary` / `Ack` / `Progress` matching the cross-repo `protocol-v2.schema.json`.
+- `ServerProcess.send(payload, onEvent?)` now consumes multi-line streaming responses; the v1 fallback still works on older runners.
+- `ServerProcess.cancel()` is a fire-and-forget that fires `{"command":"cancel"}\n` on stdin during in-flight runtests.
+- `ServerExecutionEngine` forwards `testFilter` / `coverage` / `cobertura` request fields and surfaces `cancelled` / `protocolVersion` / `coverageV2` on `ExecutionResult`.
+- `AlchemistTestController.runTests` is rewritten as a streaming consumer: progressive `run.passed` / `run.failed`, `run.addCoverage` after the final summary, multi-app loop breaks on cancellation, unreported tests marked skipped.
+- VS Code engine bumped to `^1.88.0` (for `FileCoverage` / `StatementCoverage` APIs).
+
+### Requires
+
+- **AL.Runner with protocol v2 enabled** for streaming features (currently the fork branch `feat/alchemist-protocol-v1`; upstream PRs in flight). Older AL.Runner installations continue to work transparently in v1 mode (no live streaming, no native coverage UI, no clickable stack frames).
+
 ## 0.4.0 (2026-04-25)
 
 ### Features

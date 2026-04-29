@@ -4,7 +4,7 @@ Live execution and inline feedback for AL (Business Central) — like [Quokka.js
 
 [![TypeScript](https://img.shields.io/badge/typescript-5.0-blue)](https://typescriptlang.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![VS Code](https://img.shields.io/badge/vscode-^1.85.0-blue)](https://code.visualstudio.com/)
+[![VS Code](https://img.shields.io/badge/vscode-^1.88.0-blue)](https://code.visualstudio.com/)
 
 | Metric | Value |
 |--------|-------|
@@ -39,11 +39,15 @@ Live execution and inline feedback for AL (Business Central) — like [Quokka.js
 | **Multi-app workspace** | Discovers every AL app across every workspace folder; Test Explorer groups by app; save routes tests via `app.json` dependencies |
 | **Precision-tier routing** | Tree-sitter symbol/ref index narrows save-triggered tests to affected apps; falls back safely on parse errors |
 | **Server-cached execution** | Persistent AL.Runner daemon with per-file caches; warm runs faster than cold one-shot |
+| **Live test results** | Test Explorer pass/fail marks update as each test completes (requires AL.Runner protocol v2) |
+| **Clickable stack frames** | Failure stack traces in Test Results are clickable; jump to the exact `.al` line |
+| **Native coverage rendering** | Gutter icons + Coverage View panel powered by VS Code's built-in coverage UI (Run with Coverage profile) |
+| **Cancel mid-run** | Stop in Test Explorer cancels the current run; daemon stays warm for the next request |
 
 ## Prerequisites
 
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) (AL.Runner is installed automatically)
-- VS Code 1.85.0 or later
+- VS Code 1.88.0 or later
 
 ## Installation
 
