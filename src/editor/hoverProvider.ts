@@ -186,11 +186,22 @@ export class CoverageHoverProvider implements vscode.HoverProvider {
     const markdown = new vscode.MarkdownString();
     markdown.isTrusted = true;
 
-    // Show captured variable value (last captured wins)
+    // Show captured variable values. v0.3.0 hovers exposed the full series
+    // for loops (every iteration's value); v0.5.0 collapsed to the last
+    // value, losing information. Restore the full series — single-value
+    // hovers still render plain.
     if (matchingValues.length > 0) {
-      const lastValue = matchingValues[matchingValues.length - 1].value;
       markdown.appendMarkdown(`**ALchemist: ${hoveredWord}**\n\n`);
-      markdown.appendCodeblock(`${hoveredWord} = ${lastValue}`, 'al');
+      if (matchingValues.length === 1) {
+        markdown.appendCodeblock(`${hoveredWord} = ${matchingValues[0].value}`, 'al');
+      } else {
+        // Full series, one assignment per line
+        const block = matchingValues
+          .map((cv, i) => `${hoveredWord} = ${cv.value}  // capture #${i + 1}`)
+          .join('\n');
+        markdown.appendCodeblock(block, 'al');
+        markdown.appendMarkdown(`\n_${matchingValues.length} captures total_\n`);
+      }
       markdown.appendMarkdown('\n');
     }
 

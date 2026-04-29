@@ -85,6 +85,24 @@ export function distributeMessages(callCount: number, messages: string[]): Map<n
   return result;
 }
 
+/**
+ * Format an ordered list of captured values for inline display.
+ * Mirrors `distributeMessages`'s compact-form convention so messages
+ * and captures look consistent in the editor.
+ *
+ * Examples:
+ *   formatCaptureGroup(['1'])                            → '1'
+ *   formatCaptureGroup(['1', '2'])                       → '1 | 2'
+ *   formatCaptureGroup(['1', '2', '3'])                  → '1 | 2 | 3'
+ *   formatCaptureGroup(['2', ..., '56']) // 10 values    → '2 ‥ 56  (×10)'
+ */
+export function formatCaptureGroup(values: string[]): string {
+  if (values.length === 0) return '';
+  if (values.length === 1) return values[0];
+  if (values.length <= 3) return values.join(' | ');
+  return `${values[0]} ‥ ${values[values.length - 1]}  (×${values.length})`;
+}
+
 export class DecorationManager {
   private readonly coveredDecorationType: vscode.TextEditorDecorationType;
   private readonly uncoveredDecorationType: vscode.TextEditorDecorationType;
@@ -509,11 +527,16 @@ export class DecorationManager {
     stats.capturesForActiveFile = fileValues.length;
     if (fileValues.length === 0) return stats;
 
-    // Group captured values by statementId, keeping only the last value per variable per statement
-    const lastValues = new Map<string, CapturedValue>();
+    // Group captured values by (statementId, variable), keeping the FULL ordered
+    // sequence so loops render compactly via formatCaptureGroup. v0.3.0
+    // displayed `myInt = 2 ‥ 56 (×10)`; v0.5.0's port dedup'd to last
+    // value (`myInt = 56`) — that regression is restored here.
+    const groupedValues = new Map<string, CapturedValue[]>();
     for (const cv of fileValues) {
       const key = `${cv.statementId}:${cv.variableName}`;
-      lastValues.set(key, cv);
+      const arr = groupedValues.get(key) ?? [];
+      arr.push(cv);
+      groupedValues.set(key, arr);
     }
     const entry = this.findCoverageForFile(coverage, filePath, workspacePath);
     if (!entry || entry.lines.length === 0) return stats;
@@ -526,19 +549,20 @@ export class DecorationManager {
 
     const decorations: vscode.DecorationOptions[] = [];
 
-    for (const cv of lastValues.values()) {
+    for (const [, group] of groupedValues) {
+      const head = group[0];
       // Map statementId to a covered line (best effort: statementId as index into covered lines)
-      if (cv.statementId >= 0 && cv.statementId < coveredLines.length) {
-        const lineNumber = coveredLines[cv.statementId].number - 1;
-        if (lineNumber >= 0 && lineNumber < editor.document.lineCount) {
-          decorations.push({
-            range: editor.document.lineAt(lineNumber).range,
-            renderOptions: {
-              after: { contentText: `  ${cv.variableName} = ${cv.value}` },
-            },
-          });
-        }
-      }
+      if (head.statementId < 0 || head.statementId >= coveredLines.length) continue;
+      const lineNumber = coveredLines[head.statementId].number - 1;
+      if (lineNumber < 0 || lineNumber >= editor.document.lineCount) continue;
+
+      const display = formatCaptureGroup(group.map(cv => cv.value));
+      decorations.push({
+        range: editor.document.lineAt(lineNumber).range,
+        renderOptions: {
+          after: { contentText: `  ${head.variableName} = ${display}` },
+        },
+      });
     }
 
     editor.setDecorations(this.capturedValueDecorationType, decorations);

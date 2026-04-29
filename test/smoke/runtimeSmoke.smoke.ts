@@ -125,6 +125,17 @@ suite('Runtime smoke — full extension activation against real ALProject4', fun
       'at least one capture must reference CU1 (the file under test)',
     );
 
+    // Plan E3 Group E: captures must be grouped, not dedup'd. With 10
+    // iterations of `myInt += i` in CU1.al, we expect 10 distinct values
+    // for myInt at the same statementId. If dmCaptures collapsed them
+    // to 1, the dedup-to-last regression returned.
+    const myIntCaptures = dmCaptures.filter(cv => cv.variableName.toLowerCase() === 'myint');
+    assert.ok(
+      myIntCaptures.length > 1,
+      `expected multiple myInt captures for the for-loop; got ${myIntCaptures.length}. ` +
+      'If only 1, applyInlineCapturedValues regressed back to dedup-to-last.',
+    );
+
     console.log(`[runtime smoke] ${captures.length} captures, ${coverageV2.length} coverage files, ${dmCaptures.length} dm captures — all green`);
   });
 });

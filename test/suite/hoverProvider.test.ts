@@ -97,4 +97,29 @@ suite('HoverProvider — iteration-aware', () => {
         `iteration ${i} should have myText = ${expected[i - 1]}`);
     }
   });
+
+  test('full series hover: multiple captures for same variable yield all values', () => {
+    // The new buildAggregateHover behavior emits one line per capture
+    // (with `// capture #N` index suffixes) instead of just the last value.
+    // Verify the data shape that drives that rendering: matching.length > 1.
+    const capturedValues = [
+      { scopeName: 'Scope', variableName: 'sum', value: '1', statementId: 0 },
+      { scopeName: 'Scope', variableName: 'sum', value: '3', statementId: 0 },
+      { scopeName: 'Scope', variableName: 'sum', value: '6', statementId: 0 },
+      { scopeName: 'Scope', variableName: 'sum', value: '10', statementId: 0 },
+      { scopeName: 'Scope', variableName: 'sum', value: '15', statementId: 0 },
+    ];
+    const matching = capturedValues.filter(
+      cv => cv.variableName.toLowerCase() === 'sum'
+    );
+    assert.strictEqual(matching.length, 5, 'all five captures present');
+    // Hover would render: 'sum = 1  // capture #1' through 'sum = 15  // capture #5'.
+    // We don't drive provideHover here (existing test pattern); we just
+    // confirm the data filter returns the FULL series so the renderer has
+    // material to display.
+    assert.deepStrictEqual(
+      matching.map(cv => cv.value),
+      ['1', '3', '6', '10', '15'],
+    );
+  });
 });

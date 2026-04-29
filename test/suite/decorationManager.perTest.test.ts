@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { DecorationManager } from '../../src/editor/decorations';
+import { DecorationManager, formatCaptureGroup } from '../../src/editor/decorations';
 import { CapturedValue } from '../../src/runner/outputParser';
 import { ExecutionResult } from '../../src/runner/outputParser';
 
@@ -524,3 +524,191 @@ function makeV2Result(tests: any[]): ExecutionResult {
     protocolVersion: 2,
   };
 }
+
+// --- formatCaptureGroup unit tests ----------------------------------------
+
+suite('formatCaptureGroup', () => {
+  test('empty array returns empty string', () => {
+    assert.strictEqual(formatCaptureGroup([]), '');
+  });
+
+  test('single value renders plain', () => {
+    assert.strictEqual(formatCaptureGroup(['42']), '42');
+  });
+
+  test('two values joined by pipe', () => {
+    assert.strictEqual(formatCaptureGroup(['1', '2']), '1 | 2');
+  });
+
+  test('three values joined by pipe', () => {
+    assert.strictEqual(formatCaptureGroup(['a', 'b', 'c']), 'a | b | c');
+  });
+
+  test('four or more values use compact form', () => {
+    const result = formatCaptureGroup(['2', '3', '4', '56']);
+    assert.ok(result.includes('‥'), `expected ‥ in compact form; got ${result}`);
+    assert.ok(result.includes('×4'), `expected ×4; got ${result}`);
+    assert.ok(result.startsWith('2'), `expected to start with first value; got ${result}`);
+    assert.ok(result.includes('56'), `expected to include last value; got ${result}`);
+  });
+
+  test('ten values use compact form with correct count', () => {
+    const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', '56'];
+    const result = formatCaptureGroup(values);
+    assert.strictEqual(result, '2 ‥ 56  (×10)');
+  });
+});
+
+// --- compact loop rendering integration tests -------------------------------
+
+suite('applyInlineCapturedValues — compact loop rendering', () => {
+  test('multiple values per (statementId, variable) render as compact loop summary', () => {
+    const dm = new DecorationManager(__dirname);
+    const calls: DecorationCall[] = [];
+    const path = require('path') as typeof import('path');
+    const workspacePath = path.resolve(__dirname, 'fixture-ws');
+    const filePath = path.join(workspacePath, 'CU1.al');
+    const fakeEditor = makeFakeEditor(filePath, calls);
+
+    // 10 captures of `myInt` at statementId 0, mimicking a `for` loop.
+    // statementId 0 maps to the first covered line (line 1 in fixture below).
+    const v2Captures = [];
+    const computedValues: string[] = [];
+    for (let v = 2, sum = 1; computedValues.length < 10; v++) {
+      sum += v;
+      computedValues.push(String(sum));
+    }
+    for (const value of computedValues) {
+      v2Captures.push({
+        scopeName: 's', objectName: 'CU1',
+        alSourceFile: 'CU1.al', variableName: 'myInt',
+        value, statementId: 0,
+      });
+    }
+
+    const v2Result: ExecutionResult = {
+      ...makeV2Result([
+        {
+          name: 'TestProc', status: 'passed', durationMs: 1,
+          alSourceFile: 'CU1.al',
+          capturedValues: v2Captures,
+        } as any,
+      ]),
+      coverage: [],
+      coverageV2: [{
+        file: 'CU1.al',
+        lines: [{ line: 1, hits: 10 }, { line: 3, hits: 1 }],
+        totalStatements: 2,
+        hitStatements: 2,
+      }],
+    };
+
+    dm.applyResults(fakeEditor, v2Result, workspacePath);
+
+    // Find the captured-value decoration(s) and inspect their contentText.
+    const captureCalls = calls.filter(c =>
+      c.type && c.type.options && c.type.options.after,
+    );
+    const contentTexts = captureCalls.flatMap(c =>
+      (c.ranges as any[]).map(r => r.renderOptions?.after?.contentText as string)
+    ).filter(Boolean);
+
+    // Compact-form expected: "myInt = first ‥ last  (×10)"
+    const compact = contentTexts.find(t => /myInt\s*=.*‥.*\(×10\)/.test(t));
+    assert.ok(
+      compact,
+      `expected "myInt = first ‥ last  (×10)"-style decoration; got ${JSON.stringify(contentTexts)}`,
+    );
+
+    dm.dispose();
+  });
+
+  test('single value per (statementId, variable) renders plain (no compact form)', () => {
+    const dm = new DecorationManager(__dirname);
+    const calls: DecorationCall[] = [];
+    const path = require('path') as typeof import('path');
+    const workspacePath = path.resolve(__dirname, 'fixture-ws');
+    const filePath = path.join(workspacePath, 'CU1.al');
+    const fakeEditor = makeFakeEditor(filePath, calls);
+
+    const v2Result: ExecutionResult = {
+      ...makeV2Result([
+        {
+          name: 'TestProc', status: 'passed', durationMs: 1,
+          alSourceFile: 'CU1.al',
+          capturedValues: [{
+            scopeName: 's', objectName: 'CU1',
+            alSourceFile: 'CU1.al', variableName: 'myInt',
+            value: '1', statementId: 0,
+          }],
+        } as any,
+      ]),
+      coverage: [],
+      coverageV2: [{
+        file: 'CU1.al',
+        lines: [{ line: 1, hits: 1 }],
+        totalStatements: 1, hitStatements: 1,
+      }],
+    };
+
+    dm.applyResults(fakeEditor, v2Result, workspacePath);
+
+    const captureCalls = calls.filter(c =>
+      c.type && c.type.options && c.type.options.after,
+    );
+    const contentTexts = captureCalls.flatMap(c =>
+      (c.ranges as any[]).map(r => r.renderOptions?.after?.contentText as string)
+    ).filter(Boolean);
+
+    assert.ok(
+      contentTexts.some(t => /myInt\s*=\s*1\b/.test(t) && !t.includes('×')),
+      `single-value capture must NOT use compact form; got ${JSON.stringify(contentTexts)}`,
+    );
+
+    dm.dispose();
+  });
+
+  test('two values render as joined-by-pipe (no compact)', () => {
+    const dm = new DecorationManager(__dirname);
+    const calls: DecorationCall[] = [];
+    const path = require('path') as typeof import('path');
+    const workspacePath = path.resolve(__dirname, 'fixture-ws');
+    const filePath = path.join(workspacePath, 'CU1.al');
+    const fakeEditor = makeFakeEditor(filePath, calls);
+
+    const v2Result: ExecutionResult = {
+      ...makeV2Result([
+        {
+          name: 'TestProc', status: 'passed', durationMs: 1,
+          alSourceFile: 'CU1.al',
+          capturedValues: [
+            { scopeName: 's', objectName: 'CU1', alSourceFile: 'CU1.al', variableName: 'myInt', value: '2', statementId: 0 },
+            { scopeName: 's', objectName: 'CU1', alSourceFile: 'CU1.al', variableName: 'myInt', value: '5', statementId: 0 },
+          ],
+        } as any,
+      ]),
+      coverage: [],
+      coverageV2: [{
+        file: 'CU1.al',
+        lines: [{ line: 1, hits: 2 }],
+        totalStatements: 1, hitStatements: 1,
+      }],
+    };
+
+    dm.applyResults(fakeEditor, v2Result, workspacePath);
+
+    const captureCalls = calls.filter(c =>
+      c.type && c.type.options && c.type.options.after,
+    );
+    const contentTexts = captureCalls.flatMap(c =>
+      (c.ranges as any[]).map(r => r.renderOptions?.after?.contentText as string)
+    ).filter(Boolean);
+
+    assert.ok(
+      contentTexts.some(t => /myInt\s*=\s*2\s\|\s5\b/.test(t) && !t.includes('×')),
+      `two values must render joined-by-pipe; got ${JSON.stringify(contentTexts)}`,
+    );
+
+    dm.dispose();
+  });
+});
