@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { discoverTestsInWorkspace, discoverTestsInWorkspaceSync, DiscoveredTestCodeunit } from './testDiscovery';
 import { ExecutionEngine } from '../execution/executionEngine';
-import { ExecutionResult } from '../runner/outputParser';
+import { ExecutionResult, CapturedValue } from '../runner/outputParser';
 import { TestEvent } from '../execution/protocolV2Types';
 import { WorkspaceModel } from '../workspace/workspaceModel';
 import { AlApp } from '../workspace/types';
@@ -56,6 +56,8 @@ export function groupTestItemsByApp(items: readonly { id: string }[]): Map<strin
  */
 export interface TestControllerDecorationSink {
   applyResults(editor: vscode.TextEditor, result: ExecutionResult, wsPath: string): void;
+  setCapturedValuesForTest(testName: string, values: CapturedValue[]): void;
+  clearCapturedValueScopes(): void;
 }
 
 export class AlchemistTestController {
@@ -192,6 +194,9 @@ export class AlchemistTestController {
 
     const run = this.controller.createTestRun(request);
 
+    // Clear captured value scopes at the start of each run (T10 wiring).
+    this.decorationManager?.clearCapturedValueScopes();
+
     // Reset per-run reporting bookkeeping. C1: required so the cancel
     // cleanup path can compute the set of *unreported* items.
     this.reportedItemIds.clear();
@@ -314,6 +319,15 @@ export class AlchemistTestController {
       // run.errored channel, which VS Code renders distinctly from
       // failed assertions.
       run.errored(item, this.buildTestMessage(event), event.durationMs);
+    }
+
+    // Route per-test capturedValues to DecorationManager when set (T10 wiring).
+    if (event.capturedValues && event.capturedValues.length > 0 && this.decorationManager) {
+      // Translate v2 CapturedValue → v1 CapturedValue shape via the adapter.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const dec = require('../editor/decorations') as typeof import('../editor/decorations');
+      const translated = event.capturedValues.map(dec.v2ToV1Captured);
+      this.decorationManager.setCapturedValuesForTest(event.name, translated);
     }
   }
 

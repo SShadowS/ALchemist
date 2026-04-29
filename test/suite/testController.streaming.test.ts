@@ -574,4 +574,99 @@ suite('TestController streaming (v2)', () => {
     // Sanity: original run1 spy state untouched.
     assert.strictEqual(run1.passedCalls.length, 1);
   });
+
+  test('per-test capturedValues route to DecorationManager when set (T10)', async () => {
+    // Build a fake DecorationManager with spy methods to track calls.
+    const dmCalls: { method: string; args: any[] }[] = [];
+    const fakeDm: any = {
+      clearCapturedValueScopes: () => dmCalls.push({ method: 'clear', args: [] }),
+      setCapturedValuesForTest: (name: string, values: any[]) =>
+        dmCalls.push({ method: 'set', args: [name, values] }),
+    };
+
+    const engine = new StubEngine(
+      [
+        [
+          {
+            type: 'test',
+            name: 'ComputeDoubles',
+            status: 'pass',
+            durationMs: 12,
+            capturedValues: [
+              {
+                scopeName: 'local',
+                objectName: 'Test.al',
+                variableName: 'result',
+                value: '42',
+                statementId: 0,
+              },
+            ],
+          },
+        ],
+        [],
+      ],
+      [makeEmpty(), makeEmpty()],
+    );
+    const { controller, mockController } = await makeController(engine);
+
+    // Wire the fake DecorationManager.
+    controller.setDecorationManager(fakeDm);
+
+    const tokenSrc = new vscode.CancellationTokenSource();
+    await triggerRun(mockController, new vscode.TestRunRequest(), tokenSrc.token);
+
+    // Verify clearCapturedValueScopes was called once at the start of the run.
+    const clearCalls = dmCalls.filter(c => c.method === 'clear');
+    assert.strictEqual(clearCalls.length, 1, 'clearCapturedValueScopes should be called once per run');
+
+    // Verify setCapturedValuesForTest was called with the right test name and values.
+    const setCalls = dmCalls.filter(c => c.method === 'set');
+    assert.strictEqual(setCalls.length, 1, 'setCapturedValuesForTest should be called once');
+    assert.strictEqual(setCalls[0].args[0], 'ComputeDoubles', 'should record values for the correct test');
+    assert.strictEqual(setCalls[0].args[1].length, 1, 'should have one captured value');
+    const v1Value = setCalls[0].args[1][0];
+    assert.strictEqual(v1Value.variableName, 'result');
+    assert.strictEqual(v1Value.value, '42');
+    assert.strictEqual(v1Value.scopeName, 'local');
+  });
+
+  test('handleStreamingEvent skips DecorationManager when manager not set', async () => {
+    const engine = new StubEngine(
+      [
+        [
+          {
+            type: 'test',
+            name: 'ComputeDoubles',
+            status: 'pass',
+            durationMs: 12,
+            capturedValues: [
+              {
+                scopeName: 'local',
+                objectName: 'Test.al',
+                variableName: 'x',
+                value: '99',
+                statementId: 0,
+              },
+            ],
+          },
+        ],
+        [],
+      ],
+      [makeEmpty(), makeEmpty()],
+    );
+    const { controller, mockController } = await makeController(engine);
+
+    // Deliberately do NOT call setDecorationManager; the controller's
+    // decorationManager field stays undefined.
+    assert.strictEqual((controller as any).decorationManager, undefined);
+
+    const tokenSrc = new vscode.CancellationTokenSource();
+    // Should not crash even though the manager is undefined.
+    await triggerRun(mockController, new vscode.TestRunRequest(), tokenSrc.token);
+
+    const run = mockController.__lastTestRun;
+    // Test should still pass normally.
+    assert.strictEqual(run.passedCalls.length, 1);
+    assert.strictEqual(run.passedCalls[0].item.label, 'ComputeDoubles');
+  });
 });
