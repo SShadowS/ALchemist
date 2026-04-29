@@ -26,6 +26,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Compile webpack bundle
+        run: npm run compile
+
       - name: Compile tests
         run: npm run test-compile
 
