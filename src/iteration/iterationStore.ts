@@ -12,9 +12,16 @@ export class IterationStore {
     for (const iter of iterations) {
       const steps: IterationStep[] = iter.steps.map((s) => ({
         iteration: s.iteration,
-        capturedValues: new Map(s.capturedValues.map((cv) => [cv.variableName, cv.value])),
-        messages: s.messages,
-        linesExecuted: new Set(s.linesExecuted),
+        // The v2 wire format uses WhenWritingNull serialization (Plan E3
+        // Group C) — empty/null fields are OMITTED, not emitted as `null`
+        // or `[]`. Coerce to safe defaults so downstream consumers
+        // (IterationTablePanel.updateContent) can read `.length`/`.size`
+        // without first checking for undefined. Pre-Plan-E3 v1 wire format
+        // always emitted these arrays, so the coercion is also a forward
+        // upgrade path.
+        capturedValues: new Map((s.capturedValues ?? []).map((cv) => [cv.variableName, cv.value])),
+        messages: s.messages ?? [],
+        linesExecuted: new Set(s.linesExecuted ?? []),
       }));
 
       const info: LoopInfo = {

@@ -293,4 +293,37 @@ suite('IterationStore — path resolution', () => {
     const loops = store.getLoops();
     assert.ok(path.isAbsolute(loops[0].sourceFile));
   });
+
+  test('load tolerates v2 wire-format omissions (messages/linesExecuted/capturedValues undefined)', () => {
+    // Plan E3 Group C tightened the runner's wire format: per the
+    // WhenWritingNull serialization policy, fields with empty/null values
+    // are omitted entirely rather than emitted as `null` or `[]`. The
+    // outputParser passes the JSON through unchanged, so when a step has
+    // no messages, no captures, or no executed lines, those fields arrive
+    // as `undefined` here. Without coercion, downstream
+    // IterationTablePanel.updateContent crashes reading `step.messages.length`.
+    const store = new IterationStore();
+    const sparseLoop: IterationData[] = [{
+      loopId: 'L0',
+      sourceFile: 'src/Test.al',
+      loopLine: 3,
+      loopEndLine: 5,
+      parentLoopId: null,
+      parentIteration: null,
+      iterationCount: 1,
+      steps: [
+        // Wire-format-realistic shape: omitted fields arrive as undefined.
+        { iteration: 1 } as any,
+      ],
+    }];
+    store.load(sparseLoop, '/ws');
+
+    const step = store.getStep('L0', 1);
+    assert.deepStrictEqual([...step.capturedValues.entries()], [],
+      'capturedValues must coerce to empty Map when wire omits the array');
+    assert.deepStrictEqual(step.messages, [],
+      'messages must coerce to empty array when wire omits the field');
+    assert.deepStrictEqual([...step.linesExecuted], [],
+      'linesExecuted must coerce to empty Set when wire omits the array');
+  });
 });

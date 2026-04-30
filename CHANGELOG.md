@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.6 (2026-04-30)
+
+### Fixes
+
+- **`IterationTablePanel` no longer crashes on v2 iteration data with omitted fields.** Plan E3 Group C tightened the AL.Runner v2 wire format to use `WhenWritingNull` serialization — empty `messages`, `linesExecuted`, and `capturedValues` arrays are now omitted from the JSON entirely rather than emitted as `null` or `[]`. `IterationStore.load` passed those undefined values straight through to `IterationStep`, and downstream `IterationTablePanel.updateContent` then crashed reading `step.messages.length`. Coerce all three fields to safe defaults at store load time. The v1 wire format always emitted the arrays, so existing v1 paths are unaffected.
+
+### Tests
+
+- New unit test asserts `IterationStore.load` tolerates the sparse-step shape (only `iteration` field present, all other arrays undefined). Reproduces the exact `TypeError: Cannot read properties of undefined (reading 'map')` that crashed the table panel in user runtime.
+
 ## 0.5.5 (2026-04-29)
 
 ### Restored from v0.3.0
