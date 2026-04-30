@@ -82,6 +82,13 @@ function normalizeForParity(input: any): any {
       iterationCount: loop.iterationCount,
       stepCount: loop.steps?.length ?? 0,
       sourceFileBasename: path.basename(loop.sourceFile ?? ''),
+      // Plan E4: project per-step capture variable names so a v1/v2
+      // mismatch where one path has populated step.capturedValues but
+      // the other doesn't (the regression that motivated Plan E4)
+      // surfaces as a parity diff.
+      stepVarNames: (loop.steps ?? []).map((s: any) =>
+        (s.capturedValues ?? []).map((cv: any) => cv.variableName).sort()
+      ),
     })).sort((a: any, b: any) => a.sourceFileBasename.localeCompare(b.sourceFileBasename)),
     coverage: (() => {
       // v1 emits cobertura-shape `coverage` (filename); v2 emits flat `coverageV2` (file).
