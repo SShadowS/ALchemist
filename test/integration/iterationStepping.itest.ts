@@ -164,6 +164,63 @@ suite('Integration — iteration stepping updates inline values via real VS Code
       dm.dispose();
     }
   });
+
+  test('case-insensitive variable lookup during stepping (G8 fix)', async () => {
+    // Plan E5 Group D / Gaps.md G8: when AL declares `myInt` but the
+    // runner emits the lowercase variant (or vice versa), the per-step
+    // value lookup must succeed regardless of case.
+    const vscode = require('vscode');
+    const doc = await vscode.workspace.openTextDocument(AL_FILE);
+    const realEditor = await vscode.window.showTextDocument(doc);
+
+    type Call = { type: any; ranges: any[] };
+    const calls: Call[] = [];
+    const editor = wrapEditor(realEditor, calls);
+
+    const dm = new DecorationManager(EXTENSION_ROOT);
+    try {
+      const captureType = (dm as unknown as { capturedValueDecorationType: unknown })
+        .capturedValueDecorationType;
+
+      // The fixture's loop body has `i :=` (lowercase per the parity-loop-fixture).
+      // The store has lowercase `i` too — but the LOOKUP must work even if
+      // the cases differ. Test by deliberately using uppercase 'I' in the
+      // store to verify the lookup is case-insensitive.
+      const loop: IterationData = {
+        loopId: 'L0',
+        sourceFile: AL_FILE,
+        loopLine: 8,
+        loopEndLine: 9,
+        parentLoopId: null,
+        parentIteration: null,
+        iterationCount: 3,
+        steps: [
+          { iteration: 1, capturedValues: [{ variableName: 'I', value: '1' }], messages: [], linesExecuted: [8] },
+          { iteration: 2, capturedValues: [{ variableName: 'I', value: '2' }], messages: [], linesExecuted: [8] },
+          { iteration: 3, capturedValues: [{ variableName: 'I', value: '3' }], messages: [], linesExecuted: [8] },
+        ],
+      };
+      const store = new IterationStore();
+      store.load([loop], WORKSPACE_PATH);
+
+      store.setIteration(loop.loopId, 2);
+      const step = store.getStep(loop.loopId, 2);
+      const changedVars = store.getChangedValues(loop.loopId, 2);
+      dm.applyIterationView(editor as any, step, changedVars, 0, {
+        start: loop.loopLine,
+        end: loop.loopEndLine,
+      });
+
+      const captureCalls = calls.filter(c => c.type === captureType);
+      const nonEmpty = captureCalls.filter(c => c.ranges.length > 0);
+      assert.ok(
+        nonEmpty.length > 0,
+        `case-insensitive lookup must paint a decoration even when declaration ('I') and source-text ('i') case differ; got ${captureCalls.length} calls, all empty`,
+      );
+    } finally {
+      dm.dispose();
+    }
+  });
 });
 
 /**

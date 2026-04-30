@@ -525,6 +525,64 @@ function makeV2Result(tests: any[]): ExecutionResult {
   };
 }
 
+suite('applyResults — case-insensitive variable lookup (G8 fix)', () => {
+  test('case-insensitive variable lookup — declaration case differs from source-text usage case', () => {
+    // Plan E5 Group D (fixes G8 consumer-side): AL is case-insensitive
+    // for identifiers. The runner emits captures with the variable's
+    // declaration case, but source code may use a different case (e.g.,
+    // declared `myint` but used as `myInt`). The inline-render lookup
+    // must match regardless of case.
+    const dm = new DecorationManager(__dirname);
+    const calls: DecorationCall[] = [];
+    const path = require('path') as typeof import('path');
+    const workspacePath = path.resolve(__dirname, 'fixture-ws');
+    const filePath = path.join(workspacePath, 'CU1.al');
+    const fakeEditor = makeFakeEditor(filePath, calls);
+
+    // Capture has lowercase variable name (as runner emits per declaration).
+    const v2Result: ExecutionResult = {
+      ...makeV2Result([
+        {
+          name: 'TestProc', status: 'passed', durationMs: 1,
+          alSourceFile: 'CU1.al',
+          capturedValues: [
+            { scopeName: 's', objectName: 'CU1', alSourceFile: 'CU1.al',
+              variableName: 'myint', value: '42', statementId: 0 },
+          ],
+        } as any,
+      ]),
+      coverage: [],
+      coverageV2: [{
+        file: 'CU1.al',
+        lines: [{ line: 1, hits: 1 }],
+        totalStatements: 1, hitStatements: 1,
+      }],
+    };
+
+    // Override the fake editor's lineAt to provide source text with mixed case.
+    const origLineAt = fakeEditor.document.lineAt;
+    fakeEditor.document.lineAt = (i: number) => i === 0
+      ? ({ text: '        myInt := 42;', range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } } } as any)
+      : origLineAt(i);
+
+    dm.applyResults(fakeEditor, v2Result, workspacePath);
+
+    const captureCalls = calls.filter(c =>
+      c.type && c.type.options && c.type.options.after,
+    );
+    const contentTexts = captureCalls.flatMap(c =>
+      (c.ranges as any[]).map(r => r.renderOptions?.after?.contentText as string)
+    ).filter(Boolean);
+
+    assert.ok(
+      contentTexts.some(t => /myInt\s*=\s*42\b/.test(t) || /myint\s*=\s*42\b/.test(t)),
+      `case-insensitive lookup must succeed even when declaration case (myint) differs from source-text case (myInt); got ${JSON.stringify(contentTexts)}`,
+    );
+
+    dm.dispose();
+  });
+});
+
 // --- formatCaptureGroup unit tests ----------------------------------------
 
 suite('formatCaptureGroup', () => {

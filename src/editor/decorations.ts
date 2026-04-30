@@ -531,9 +531,14 @@ export class DecorationManager {
     // sequence so loops render compactly via formatCaptureGroup. v0.3.0
     // displayed `myInt = 2 ‥ 56 (×10)`; v0.5.0's port dedup'd to last
     // value (`myInt = 56`) — that regression is restored here.
+    // Group by lowercase variable name (Plan E5 Group D, G8 fix). AL
+    // is case-insensitive; declaration case may differ from source-text
+    // case. The display uses the original case from cv.variableName,
+    // but the GROUPING key is normalized so two captures with the same
+    // logical variable but different casing don't fragment.
     const groupedValues = new Map<string, CapturedValue[]>();
     for (const cv of fileValues) {
-      const key = `${cv.statementId}:${cv.variableName}`;
+      const key = `${cv.statementId}:${cv.variableName.toLowerCase()}`;
       const arr = groupedValues.get(key) ?? [];
       arr.push(cv);
       groupedValues.set(key, arr);
@@ -660,13 +665,23 @@ export class DecorationManager {
     const startLine = loopLineRange ? loopLineRange.start - 1 : 0; // Convert 1-based to 0-based
     const endLine = loopLineRange ? loopLineRange.end - 1 : editor.document.lineCount - 1;
 
+    // Plan E5 Group D (G8 fix): build a case-insensitive lookup against
+    // step.capturedValues. AL identifiers are case-insensitive; the
+    // runner emits declaration case (e.g., `myint`) while source text
+    // may use mixed case (e.g., `myInt`). Lower-key the Map once,
+    // preserve original casing for display purposes via `varName`.
+    const lowerKeyMap = new Map<string, string>();
+    for (const [k, v] of step.capturedValues) {
+      lowerKeyMap.set(k.toLowerCase(), v);
+    }
+
     const assignRegex = /\b(\w+)\s*:=/;
     for (let i = startLine; i <= endLine && i < editor.document.lineCount; i++) {
       const lineText = editor.document.lineAt(i).text;
       const match = lineText.match(assignRegex);
       if (match) {
         const varName = match[1];
-        const value = step.capturedValues.get(varName);
+        const value = lowerKeyMap.get(varName.toLowerCase());
         if (value !== undefined) {
           const range = editor.document.lineAt(i).range;
           const isChanged = changedSet.has(varName.toLowerCase());
