@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.7 (2026-04-30)
+
+### Fixes
+
+- **Iteration stepping now updates inline values when dispatched from the Iteration Table panel.** When the user clicked a row in the table webview, `vscode.window.activeTextEditor` was undefined or pointing at an unrelated text editor (the panel is a webview, not a text editor). `onIterationChanged` and `IterationStepperDecoration.refresh` both early-returned on the missing active editor, leaving inline values frozen at the aggregate (last) value while the status bar correctly showed the new iteration. The flow now selects the correct editor by matching `loop.sourceFile` against `vscode.window.visibleTextEditors`, so stepping works regardless of which UI surface (CodeLens, keyboard, webview) dispatched it. Stepper decoration similarly refreshes every visible editor that contains a tracked loop, including in split-pane layouts.
+
+### Tests
+
+- New `iterationViewSync` helper module + 8 unit tests pinning path-equality and editor-selection semantics. The helper is the single source of truth for "which editor does this loop's data belong to?" so the same selector applies everywhere.
+- New `IterationStepperDecoration — refresh paints all visible editors` unit test simulates the failure mode (no active editor + 2 visible editors in different files) and asserts decoration calls land on the matching editor and clear on the non-matching one.
+
+### Code-path audit
+
+Every `vscode.window.activeTextEditor` read in `src/` was reviewed. The remaining usages are correct: user-initiated commands (runNow, scratch ops, runWiderScope), save handler (the saved file IS the active editor by definition), result rendering (the user's saved file). Only the iteration-stepping flow had the cross-surface invariant problem.
+
 ## 0.5.6 (2026-04-30)
 
 ### Fixes

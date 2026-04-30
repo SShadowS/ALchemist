@@ -15,6 +15,7 @@ import { IterationStore } from './iteration/iterationStore';
 import { IterationCodeLensProvider, IterationStepperDecoration } from './iteration/iterationCodeLensProvider';
 import { registerIterationCommands, findLoopAtCursor } from './iteration/iterationCommands';
 import { IterationTablePanel } from './iteration/iterationTablePanel';
+import { findEditorsForLoopSourceFile } from './iteration/iterationViewSync';
 import { WorkspaceModel, bindWorkspaceModelToVsCode, FILE_WATCH_DEBOUNCE_MS } from './workspace/workspaceModel';
 import { planSaveRuns } from './testing/saveRouting';
 import { ParseCache } from './symbols/parseCache';
@@ -613,29 +614,52 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestHo
 
   const onIterationChanged = (loopId: string) => {
     try {
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) return;
-
-      if (iterationStore.isShowingAll(loopId)) {
-        if (lastExecutionResult) {
-          const wsPath = workspaceModel.getAppContaining(editor.document.uri.fsPath)?.path ?? path.dirname(editor.document.uri.fsPath);
-          decorationManager.applyResults(editor, lastExecutionResult, wsPath);
+      // Use the loop's sourceFile to find the relevant editor(s) — NOT
+      // vscode.window.activeTextEditor. When the user steps via the
+      // Iteration Table panel webview, activeTextEditor is undefined or
+      // points at an unrelated text editor, and the stepping flow
+      // silently no-op'd (status bar updated, inline values stale).
+      // Painting all visible editors that show the loop's file makes the
+      // selector right regardless of which UI surface dispatched the step.
+      const loop = iterationStore.getLoop(loopId);
+      const editors = findEditorsForLoopSourceFile(
+        vscode.window.visibleTextEditors,
+        loop.sourceFile,
+      );
+      if (editors.length === 0) {
+        // Loop's file isn't open. Still update the status bar so the
+        // stepper indicator reflects the current iteration.
+        if (iterationStore.isShowingAll(loopId)) {
+          statusBar.showIterationStepper(0, loop.iterationCount);
+        } else {
+          statusBar.showIterationStepper(loop.currentIteration, loop.iterationCount);
         }
-        const allLoop = iterationStore.getLoop(loopId);
-        statusBar.showIterationStepper(0, allLoop.iterationCount);
         return;
       }
 
-      const loop = iterationStore.getLoop(loopId);
+      if (iterationStore.isShowingAll(loopId)) {
+        if (lastExecutionResult) {
+          for (const editor of editors) {
+            const wsPath = workspaceModel.getAppContaining(editor.document.uri.fsPath)?.path
+              ?? path.dirname(editor.document.uri.fsPath);
+            decorationManager.applyResults(editor, lastExecutionResult, wsPath);
+          }
+        }
+        statusBar.showIterationStepper(0, loop.iterationCount);
+        return;
+      }
+
       const step = iterationStore.getStep(loopId, loop.currentIteration);
       const config = vscode.workspace.getConfiguration('alchemist');
       const flashMs = config.get<number>('iterationFlashDuration', 600);
       const changedVars = iterationStore.getChangedValues(loopId, loop.currentIteration);
 
-      decorationManager.applyIterationView(editor, step, changedVars, flashMs, {
-        start: loop.loopLine,
-        end: loop.loopEndLine,
-      });
+      for (const editor of editors) {
+        decorationManager.applyIterationView(editor, step, changedVars, flashMs, {
+          start: loop.loopLine,
+          end: loop.loopEndLine,
+        });
+      }
       statusBar.showIterationStepper(loop.currentIteration, loop.iterationCount);
     } catch (err: any) {
       console.error('ALchemist: iteration change error:', err);

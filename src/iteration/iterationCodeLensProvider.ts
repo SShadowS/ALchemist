@@ -132,8 +132,11 @@ export class IterationStepperDecoration {
     this.storeSubscription = store.onDidChange(() => this.refresh());
     this.editorSubscription = vscode.window.onDidChangeActiveTextEditor(() => this.refresh());
     this.documentSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
-      // Only refresh when the active editor's document changes, debounced
-      if (e.document === vscode.window.activeTextEditor?.document) {
+      // Refresh when ANY visible editor's document changes, debounced.
+      // The previous filter on `activeTextEditor?.document` missed updates
+      // from edits in split panes and from webview-driven flows where
+      // activeTextEditor is undefined.
+      if (vscode.window.visibleTextEditors.some(ed => ed.document === e.document)) {
         this.debouncedRefresh();
       }
     });
@@ -144,10 +147,19 @@ export class IterationStepperDecoration {
     this.refreshTimer = setTimeout(() => this.refresh(), 100);
   }
 
+  /**
+   * Refresh the stepper indicator on every visible editor.
+   *
+   * Previously this only painted the active editor; the stepper
+   * decoration silently disappeared when the user steered iterations
+   * via the Iteration Table webview (activeTextEditor is undefined or
+   * unrelated). Iterating visibleTextEditors makes the indicator
+   * resilient to the dispatching surface.
+   */
   refresh(): void {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) return;
-    this.applyTo(editor);
+    for (const editor of vscode.window.visibleTextEditors) {
+      this.applyTo(editor);
+    }
   }
 
   applyTo(editor: vscode.TextEditor): void {
