@@ -6,3 +6,4 @@ dist/
 .vscode-test/
 *.tsbuildinfo
 cobertura.xml
+.claude/
