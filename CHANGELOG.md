@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.10 (2026-04-30)
+
+### Restored
+
+- **Loop-variable per-iteration values now render inline.** Previously the loop counter `i` in `for i := 1 to 10 do` arrived as a single capture at test scope (final value 10), so inline display showed `i = 10` instead of the v0.3.0 `i = 1 ‥ 10 (×10)` distribution. AL.Runner's `IterationInjector` now emits a per-iteration capture for the loop variable, so it flows through the same compact-form rendering as assignment targets. The smoke test now asserts both the loop variable AND the assignment target populate per-iteration.
+- **Nested loops no longer double-count captures.** Previously inner-loop captures appeared in BOTH the inner step and the outer step (snapshot/delta math wasn't stack-aware). The runner's `IterationTracker` now uses per-loop accumulators — each capture lands in exactly one loop's iteration step (the innermost active one). Single-attribution by construction.
+- **Mixed-case identifiers now match.** AL is case-insensitive for identifiers; declaration case (e.g., `myint`) may differ from source-text use (e.g., `myInt`). Inline render and stepping flow use case-insensitive lookups against `step.capturedValues` while preserving the runner's original case for display.
+
+### Cross-repo dependency
+
+Requires AL.Runner fork at the Plan E5 cut. Runner-side commits in `AlRunner/Runtime/IterationTracker.cs` (per-loop accumulators), `AlRunner/Runtime/{ValueCapture,MessageCapture}.cs` (route to innermost loop), and `AlRunner/IterationInjector.cs` (loop-variable capture injection with correct `ScopeToObject`-resolved object name). Plan document at `docs/superpowers/plans/2026-04-30-plan-e5-fix-confirmed-gaps.md`. Companion gap-tracking at `Gaps.md` in the AL.Runner fork — the Confirmed section is now empty.
+
+### Architectural note
+
+Plan E5 Group A's per-loop accumulator design supersedes Plan E4's `TestExecutionScope`-based snapshot/delta math: `IterationTracker.FinalizeIteration` no longer reads from the test scope at all; it copies directly from the active loop's own per-iteration accumulator. Same downstream contract (per-iteration captures populate), cleaner state machine, no nested-loop attribution issues.
+
 ## 0.5.9 (2026-04-30)
 
 ### Restored
