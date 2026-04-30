@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.5.9 (2026-04-30)
+
+### Restored
+
+- **Iteration stepping now updates inline captured values.** v0.5.7 fixed which editor the stepping flow paints into; v0.5.8 fixed cross-platform path normalization in tests. Neither was enough to make stepping show per-iteration values: `step.capturedValues` was always empty in the v2 wire format because `IterationTracker.FinalizeIteration` (in AL.Runner) sampled the global `ValueCapture.GetCaptures()` aggregate (only populated when `ValueCapture.Enable()` had been called — the legacy v1 `--output-json` path) instead of the per-test scope (`TestExecutionScope.Current.CapturedValues`, which the v2 streaming path always populates). The same architectural bug also affected `step.messages` (parallel `MessageCapture.GetMessages()` aggregate). User-visible symptom: stepping to iteration N updated the indicator but the inline `j = ?` text disappeared because there was nothing to render. The runner now reads from the active scope; per-iteration captures and messages populate end-to-end on both the v1 `--output-json` and v2 `--server` paths (they share the same `IterationTracker.FinalizeIteration` code).
+
+### Tests
+
+- Two new `@vscode/test-electron` integration tests (no mocks, real APIs) drive the iteration-stepping flow through real VS Code APIs:
+  - `iterationStepping.itest.ts` — drives `applyIterationView` against a real opened editor and asserts inline contentText.
+  - `iterationStepperDecoration.itest.ts` — drives the stepper indicator through `visibleTextEditors`.
+  - Every VS Code API call is annotated with its canonical documentation URL (https://code.visualstudio.com/api/...) so future engineers can validate behavior against the spec without guessing.
+- Smoke test extended with per-step capture assertions so the symptom can't recur silently.
+- Parity suite tightened: per-step variable names are now part of the v1↔v2 projection, so future iteration-related drops surface as parity diffs.
+
+### Cross-repo dependency
+
+Requires AL.Runner fork at the Plan E4 Group A cut. The runner-side fix sits in `AlRunner/Runtime/IterationTracker.cs` (FinalizeIteration reads from `TestExecutionScope.Current.CapturedValues` and `.Messages` instead of the global aggregates). Plan documents at `docs/superpowers/plans/2026-04-30-plan-e4-per-iteration-captures.md`. Companion gap-tracking doc at `Gaps.md` in the AL.Runner fork.
+
+### Known gaps (Gaps.md tracks)
+
+The same audit identified seven additional suspected gaps in AL.Runner that may surface as future symptoms — loop-variable single-capture, cancellation mid-iteration, nested loop attribution, zero-iteration emission, cache-hit iteration leakage, schema/emission edge cases, and variable-name casing. Documented in the AL.Runner fork's `Gaps.md` for future planning.
+
 ## 0.5.8 (2026-04-30)
 
 ### Fixes
