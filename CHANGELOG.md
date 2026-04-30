@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.5.7 (2026-04-30)
+## 0.5.8 (2026-04-30)
+
+### Fixes
+
+- **`pathsEqual` cross-platform correctness.** The slash-tolerant comparison in `iterationViewSync.ts` and the duplicate one in `iterationCodeLensProvider.ts` relied on `path.normalize` to convert backslashes to forward slashes. That works on Windows (the runtime target) but fails on POSIX, where `path.normalize` treats backslashes as literal path characters. The CI test suite runs on Linux and three Windows-style fixture paths in `iterationViewSync.test.ts` failed there. Manually normalize backslashes to forward slashes BEFORE `path.normalize` so the comparison works on both platforms. Also consolidates the two `pathsEqual` definitions — `iterationCodeLensProvider.ts` now imports the canonical version from `iterationViewSync.ts` (DRY).
+
+### Internal
+
+- v0.5.7 was tagged but the release workflow's Linux CI test run failed on the cross-platform issue above, so v0.5.7 was never published to the Marketplace. v0.5.8 supersedes it. The v0.5.7 git tag remains as a marker of the failed attempt.
+
+## 0.5.7 (2026-04-30, never published)
 
 ### Fixes
 

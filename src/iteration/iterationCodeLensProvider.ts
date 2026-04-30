@@ -1,10 +1,6 @@
-import * as path from 'path';
 import * as vscode from 'vscode';
 import { IterationStore } from './iterationStore';
-
-function pathsEqual(a: string, b: string): boolean {
-  return path.normalize(a).toLowerCase() === path.normalize(b).toLowerCase();
-}
+import { pathsEqual } from './iterationViewSync';
 
 /**
  * Builds stepper display text for a loop.

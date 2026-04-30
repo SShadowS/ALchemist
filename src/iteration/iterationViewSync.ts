@@ -3,13 +3,18 @@ import * as path from 'path';
 /**
  * Match an editor's document path against a loop's source file path.
  *
- * Both sides are normalized to absolute, native-slash, lowercase before
- * comparison. Tolerates the cross-platform shapes the wire format and
- * editor.fsPath produce (forward vs backslash, drive-letter case
- * differences on Windows).
+ * Tolerates the cross-platform shapes the wire format and editor.fsPath
+ * produce (forward vs backslash, drive-letter case differences on Windows).
+ * Slash normalization is done manually BEFORE `path.normalize` because
+ * `path.normalize` on POSIX leaves backslashes alone (treating them as
+ * literal path characters) — without the manual step, the function would
+ * return false on POSIX CI when given a Windows-style path. Running on
+ * the user's Windows machine the two approaches converge, but CI runs
+ * on Linux and depends on the manual step.
  */
 export function pathsEqual(a: string, b: string): boolean {
-  return path.normalize(a).toLowerCase() === path.normalize(b).toLowerCase();
+  const norm = (p: string) => path.normalize(p.replace(/\\/g, '/')).toLowerCase();
+  return norm(a) === norm(b);
 }
 
 /**
