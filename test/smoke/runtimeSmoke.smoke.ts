@@ -127,6 +127,20 @@ suite('Runtime smoke — full extension activation against real ALProject4', fun
       `step[3].capturedValues must include myInt; got ${JSON.stringify(step3Captures.map(cv => cv.variableName))}`,
     );
 
+    // Plan E5 Group B (G2 fix): the runner now also captures the loop
+    // variable per iteration. CU1.al's `for i := 1 to 10 do` should
+    // yield captures for both `i` AND `myInt` on each iteration.
+    assert.ok(
+      step3Captures.some(cv => cv.variableName.toLowerCase() === 'i'),
+      `step[3].capturedValues must include the loop variable 'i' (Plan E5 Group B fix); got ${JSON.stringify(step3Captures.map(cv => cv.variableName))}`,
+    );
+    // Pin the value: at iteration 3, `i` should be 3.
+    const stepIvalue = step3Captures.find(cv => cv.variableName.toLowerCase() === 'i')?.value;
+    assert.strictEqual(
+      stepIvalue, '3',
+      `step[3] loop variable 'i' must equal '3'; got ${stepIvalue}`,
+    );
+
     // 9. The DecorationManager must hold captures (proves applyResults ran the
     //    inline-render branch — the v0.5.3+ path-matcher fix). If
     //    findCoverageForFile fails to match the v2 absolute path, captures
