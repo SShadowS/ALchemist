@@ -297,7 +297,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@sshadows/tree-sitter-al": "^2.5.0",
+    "@sshadows/tree-sitter-al": "^3.0.1",
     "fast-xml-parser": "^5.5.11",
     "web-tree-sitter": "^0.26.8"
   },
