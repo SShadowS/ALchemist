@@ -23,7 +23,8 @@ const detailsByFc = new WeakMap<vscode.FileCoverage, vscode.StatementCoverage[]>
  * `FileCoverage[]` shape so callers can pass the result directly to
  * `vscode.TestRun.addCoverage()`.
  *
- * AL.Runner emits 1-indexed line/column numbers; VS Code's `Position` is
+ * AL.Runner emits 1-indexed line/column numbers; VS Code's `Position`
+ * (and the `Range` each detail's `location` is composed from) is
  * 0-indexed. This adapter performs the offset.
  *
  * Hit-count semantics: details are built from AL.Runner >= 2.7.0's
@@ -67,8 +68,17 @@ export function toVsCodeCoverage(input: FileCoverage[]): vscode.FileCoverage[] {
     const details = (fc.statements ?? []).map(s => {
       const startLine = s.line - 1;
       const startCol = s.column - 1;
-      const endLine = (s.endLine ?? s.line) - 1;
-      const endCol = s.endColumn !== undefined ? s.endColumn - 1 : startCol;
+      // `endLine`/`endColumn` are independently optional on StatementRecord,
+      // so a record could in principle carry only one of them. Treat the
+      // pair as all-or-nothing rather than defaulting each independently —
+      // a half-populated pair would otherwise produce a nonsense range
+      // (spanning lines but zero-width horizontally, or vice versa). Use
+      // the full end position only when both are present; otherwise
+      // collapse to the zero-width range at the start, same as when both
+      // are absent.
+      const hasFullEnd = s.endLine !== undefined && s.endColumn !== undefined;
+      const endLine = hasFullEnd ? s.endLine! - 1 : startLine;
+      const endCol = hasFullEnd ? s.endColumn! - 1 : startCol;
       return new vscode.StatementCoverage(
         s.hits,
         new vscode.Range(

@@ -257,6 +257,38 @@ suite('coverageAdapter — statement table', () => {
     assert.strictEqual(range.end.character, 2);
   });
 
+  test('statement with only endLine (no endColumn) collapses to a zero-width range at its start', () => {
+    const input: FileCoverage[] = [{
+      file: path.resolve('/tmp/Foo.al'),
+      lines: [{ line: 7, hits: 1 }],
+      totalStatements: 1,
+      hitStatements: 1,
+      statements: [{ id: 0, scope: 'S', line: 7, column: 3, endLine: 9, hits: 1 }],
+    }];
+    const detail = getDetails(toVsCodeCoverage(input)[0])!;
+    const range = detail[0].location as vscode.Range;
+    assert.strictEqual(range.start.line, 6);
+    assert.strictEqual(range.start.character, 2);
+    assert.strictEqual(range.end.line, 6);
+    assert.strictEqual(range.end.character, 2);
+  });
+
+  test('statement with only endColumn (no endLine) collapses to a zero-width range at its start', () => {
+    const input: FileCoverage[] = [{
+      file: path.resolve('/tmp/Foo.al'),
+      lines: [{ line: 7, hits: 1 }],
+      totalStatements: 1,
+      hitStatements: 1,
+      statements: [{ id: 0, scope: 'S', line: 7, column: 3, endColumn: 30, hits: 1 }],
+    }];
+    const detail = getDetails(toVsCodeCoverage(input)[0])!;
+    const range = detail[0].location as vscode.Range;
+    assert.strictEqual(range.start.line, 6);
+    assert.strictEqual(range.start.character, 2);
+    assert.strictEqual(range.end.line, 6);
+    assert.strictEqual(range.end.character, 2);
+  });
+
   test('runner totals still drive TestCoverageCount, not the detail array length', () => {
     const input: FileCoverage[] = [{
       file: path.resolve('/tmp/Foo.al'),
