@@ -8,6 +8,7 @@ import { WorkspaceModel } from '../workspace/workspaceModel';
 import { AlApp } from '../workspace/types';
 import { toVsCodeCoverage, getDetails } from '../execution/coverageAdapter';
 import { v2ToV1Captured } from '../execution/captureValueAdapter';
+import { buildDebugConfiguration, shouldWarnAboutStepping, STEPPING_CAVEAT } from '../debug/debugLaunch';
 
 export interface TestTreeAppNode {
   app: AlApp;
@@ -90,6 +91,14 @@ export class AlchemistTestController {
   private reportedItemIds = new Set<string>();
 
   /**
+   * Whether `debugTests` has already shown the stepping caveat on this
+   * controller instance. Guards `shouldWarnAboutStepping` so the notice
+   * appears once per session (controller lifetime), not once per debug
+   * launch.
+   */
+  private warnedAboutStepping = false;
+
+  /**
    * Resolve a TestItem by procedure name in the context of the currently
    * running app. Used by `handleStreamingEvent`, `applyV1Result`, and
    * `updateFromResult` to map a v2 TestEvent (which carries only the
@@ -155,6 +164,64 @@ export class AlchemistTestController {
         return getDetails(fc) ?? [];
       };
     }
+
+    // Debug profile: the Debug gutter action on any test starts a DAP
+    // session against the same runner the Run profile uses. Breakpoints
+    // do the work; see STEPPING_CAVEAT for what the adapter does not
+    // implement yet.
+    this.controller.createRunProfile(
+      'Debug Tests',
+      vscode.TestRunProfileKind.Debug,
+      (request, token) => this.debugTests(request, token),
+      false,
+    );
+  }
+
+  /**
+   * Start a debug session for the selected test (or the whole suite when
+   * the request carries no specific item).
+   */
+  private async debugTests(
+    request: vscode.TestRunRequest,
+    _token: vscode.CancellationToken,
+  ): Promise<void> {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!folder) {
+      vscode.window.showErrorMessage('ALchemist: open a workspace folder before debugging AL tests.');
+      return;
+    }
+
+    if (shouldWarnAboutStepping(this.warnedAboutStepping)) {
+      this.warnedAboutStepping = true;
+      vscode.window.showInformationMessage(STEPPING_CAVEAT);
+    }
+
+    const selected = request.include?.[0];
+    const config = buildDebugConfiguration({
+      bundleDir: folder.uri.fsPath,
+      sourcePaths: this.resolveDebugSourcePaths(selected),
+      testName: selected?.label,
+    });
+    await vscode.debug.startDebugging(folder, config);
+  }
+
+  /**
+   * Same multi-app derivation `runTests` uses for ordinary runs (the
+   * selected test's app plus its transitive dependency source paths — a
+   * declared app dependency does not auto-resolve from a sibling folder).
+   * Only meaningful when exactly one item is selected and the model
+   * resolves its owning app; otherwise undefined, and
+   * `buildDebugConfiguration` falls back to `bundleDir` alone rather than
+   * emitting an empty list.
+   */
+  private resolveDebugSourcePaths(selected: vscode.TestItem | undefined): string[] | undefined {
+    if (!this.model || !selected) { return undefined; }
+    const [appId] = groupTestItemsByApp([selected]).keys();
+    if (!appId) { return undefined; }
+    const app = this.model.getApps().find(a => a.id === appId);
+    if (!app) { return undefined; }
+    const depPaths = this.model.getDependencies(app.id).map(a => a.path);
+    return depPaths.length > 0 ? depPaths : [app.path];
   }
 
   /**

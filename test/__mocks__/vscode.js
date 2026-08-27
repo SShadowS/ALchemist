@@ -57,7 +57,15 @@ function createMockTestController(id, label) {
         loadDetailedCoverage: undefined,
       };
       controller.__runProfiles.push(profile);
-      controller.__lastRunProfile = profile;
+      // __lastRunProfile predates the Debug profile (T8) and existing
+      // tests key off it meaning "the Run profile" specifically — only
+      // track Run-kind registrations here so adding a second (Debug)
+      // profile doesn't silently redirect those tests. __runProfiles
+      // above still records every profile, kind included, for tests that
+      // need to find a specific one.
+      if (kind === module.exports.TestRunProfileKind.Run) {
+        controller.__lastRunProfile = profile;
+      }
       return profile;
     },
     createTestItem: createMockTestItem,
