@@ -35,7 +35,8 @@
   "activationEvents": [
     "onLanguage:al",
     "onCommand:alchemist.newScratchFile",
-    "onCommand:alchemist.runNow"
+    "onCommand:alchemist.runNow",
+    "onDebugResolve:alchemist"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -151,6 +152,56 @@
       {
         "command": "alchemist.runWiderScope",
         "title": "ALchemist: Run Wider Scope (Force Fallback)"
+      }
+    ],
+    "breakpoints": [
+      { "language": "al" }
+    ],
+    "debuggers": [
+      {
+        "type": "alchemist",
+        "label": "ALchemist (AL.Runner)",
+        "languages": ["al"],
+        "configurationAttributes": {
+          "launch": {
+            "properties": {
+              "bundleDir": {
+                "type": "string",
+                "description": "Directory AL.Runner debugs. Defaults to the workspace folder.",
+                "default": "${workspaceFolder}"
+              },
+              "sourcePaths": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Explicit list of source paths (test app plus its dependency apps) to pass to AL.Runner. Overrides bundleDir when set; use this for multi-app workspaces where a single directory is not enough."
+              },
+              "testFilter": {
+                "type": "string",
+                "description": "Optional test name to run under the debugger. Omit to debug the whole suite."
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "alchemist",
+            "request": "launch",
+            "name": "ALchemist: Debug AL Tests",
+            "bundleDir": "${workspaceFolder}"
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "ALchemist: Debug AL Tests",
+            "description": "Debug AL tests with AL.Runner (no container required).",
+            "body": {
+              "type": "alchemist",
+              "request": "launch",
+              "name": "ALchemist: Debug AL Tests",
+              "bundleDir": "^\"\\${workspaceFolder}\""
+            }
+          }
+        ]
       }
     ],
     "keybindings": [

@@ -293,4 +293,23 @@ module.exports = {
       this.branches = branches ?? [];
     }
   },
+  DebugAdapterExecutable: class DebugAdapterExecutable {
+    constructor(command, args, options) {
+      this.command = command;
+      this.args = args;
+      this.options = options;
+    }
+  },
+  debug: {
+    registeredFactories: [],
+    startDebuggingCalls: [],
+    registerDebugAdapterDescriptorFactory(type, factory) {
+      module.exports.debug.registeredFactories.push({ type, factory });
+      return { dispose() {} };
+    },
+    async startDebugging(folder, config) {
+      module.exports.debug.startDebuggingCalls.push({ folder, config });
+      return true;
+    },
+  },
 };

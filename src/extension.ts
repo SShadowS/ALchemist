@@ -6,6 +6,7 @@ import { ServerExecutionEngine } from './execution/serverExecutionEngine';
 import { ExecutionEngine } from './execution/executionEngine';
 import { DecorationManager } from './editor/decorations';
 import { CoverageHoverProvider } from './editor/hoverProvider';
+import { AlchemistDebugAdapterFactory, ALCHEMIST_DEBUG_TYPE } from './debug/debugAdapterFactory';
 import { AlchemistOutputChannel } from './output/outputChannel';
 import { StatusBarManager } from './output/statusBar';
 import { ScratchManager, isScratchFile, isProjectAware, resolveScratchProjectApp } from './scratch/scratchManager';
@@ -743,6 +744,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestHo
 
   context.subscriptions.push(
     vscode.languages.registerHoverProvider('al', new CoverageHoverProvider(decorationManager, iterationStore))
+  );
+
+  // --- Debug adapter ---
+
+  context.subscriptions.push(
+    vscode.debug.registerDebugAdapterDescriptorFactory(
+      ALCHEMIST_DEBUG_TYPE,
+      new AlchemistDebugAdapterFactory(runnerManager),
+    ),
   );
 
   // Push all disposables
