@@ -51,6 +51,21 @@ export function isScratchFile(filePath: string): boolean {
   return filePath.includes(SCRATCH_DIR_NAME);
 }
 
+const SCRATCH_BUNDLE_NAME_REGEX = /^scratch(\d+)$/;
+
+/**
+ * The bundle directory to hand AL.Runner for a given scratch file.
+ *
+ * AL.Runner 2.7.0's `execute` command requires `sourcePaths` entries to be
+ * bundle directories, not individual .al files — passing the scratch file
+ * itself fails with "bundle directory not found". Each scratch file lives
+ * in its own same-named subdirectory of alchemist-scratch/, so the bundle
+ * directory is simply that file's parent directory.
+ */
+export function getScratchBundleDir(scratchFilePath: string): string {
+  return path.dirname(scratchFilePath);
+}
+
 export class ScratchManager {
   private readonly scratchDir: string;
   private scratchCounter = 0;
@@ -60,15 +75,62 @@ export class ScratchManager {
     if (!fs.existsSync(this.scratchDir)) {
       fs.mkdirSync(this.scratchDir, { recursive: true });
     }
-    // Count existing scratch files to continue numbering
-    const existing = fs.readdirSync(this.scratchDir).filter((f) => f.endsWith('.al'));
-    this.scratchCounter = existing.length;
+    // Older versions left scratch files loose directly in scratchDir; move
+    // each into its own same-named subdirectory so AL.Runner 2.7.0's
+    // bundle-directory requirement is met (see getScratchBundleDir above).
+    this.migrateLooseScratchFiles();
+    // Continue numbering from the highest existing bundle directory so a
+    // new file never collides with one left behind by a gap (e.g. scratch2
+    // deleted while scratch1 and scratch3 still exist).
+    this.scratchCounter = this.findHighestScratchIndex();
+  }
+
+  /**
+   * Move any `*.al` sitting loose directly in scratchDir into its own
+   * same-named subdirectory (e.g. `scratch1.al` -> `scratch1/scratch1.al`).
+   * Safe to run every time the manager is constructed: once a file has been
+   * moved it is no longer a loose file, so a second pass finds nothing left
+   * to do. Never overwrites an existing target — a loose file whose target
+   * directory already holds a same-named file is left in place untouched.
+   */
+  private migrateLooseScratchFiles(): void {
+    const entries = fs.readdirSync(this.scratchDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith('.al')) continue;
+      const baseName = path.parse(entry.name).name;
+      const loosePath = path.join(this.scratchDir, entry.name);
+      const targetDir = path.join(this.scratchDir, baseName);
+      const targetPath = path.join(targetDir, entry.name);
+      if (fs.existsSync(targetPath)) {
+        // Target already claimed — leave the loose file alone rather than
+        // clobbering whatever is already bundled there.
+        continue;
+      }
+      fs.mkdirSync(targetDir, { recursive: true });
+      fs.renameSync(loosePath, targetPath);
+    }
+  }
+
+  /** Highest `scratchN` bundle-directory index currently under scratchDir (0 if none). */
+  private findHighestScratchIndex(): number {
+    const entries = fs.readdirSync(this.scratchDir, { withFileTypes: true });
+    let highest = 0;
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const match = SCRATCH_BUNDLE_NAME_REGEX.exec(entry.name);
+      if (match) {
+        highest = Math.max(highest, parseInt(match[1], 10));
+      }
+    }
+    return highest;
   }
 
   async newScratchFile(extensionPath: string): Promise<vscode.TextEditor> {
     this.scratchCounter++;
     const fileName = `scratch${this.scratchCounter}.al`;
-    const filePath = path.join(this.scratchDir, fileName);
+    const bundleDir = path.join(this.scratchDir, `scratch${this.scratchCounter}`);
+    fs.mkdirSync(bundleDir, { recursive: true });
+    const filePath = path.join(bundleDir, fileName);
 
     // Read template
     const templatePath = path.join(extensionPath, 'resources', 'scratch-template.al');
@@ -96,6 +158,21 @@ export class ScratchManager {
     await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
+    }
+    this.removeEmptyBundleDir(filePath);
+  }
+
+  /** Remove a scratch file's bundle directory, but only if it is now empty and genuinely inside scratchDir. */
+  private removeEmptyBundleDir(scratchFilePath: string): void {
+    const bundleDir = getScratchBundleDir(scratchFilePath);
+    const relativeToScratchDir = path.relative(this.scratchDir, bundleDir);
+    // Never remove scratchDir itself, and never step outside it.
+    if (relativeToScratchDir === '' || relativeToScratchDir.startsWith('..') || path.isAbsolute(relativeToScratchDir)) {
+      return;
+    }
+    if (!fs.existsSync(bundleDir)) return;
+    if (fs.readdirSync(bundleDir).length === 0) {
+      fs.rmdirSync(bundleDir);
     }
   }
 

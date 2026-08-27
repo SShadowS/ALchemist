@@ -1,5 +1,15 @@
 import * as assert from 'assert';
-import { isProjectAware, isScratchFile, resolveScratchProjectApp } from '../../src/scratch/scratchManager';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import * as vscode from 'vscode';
+import {
+  isProjectAware,
+  isScratchFile,
+  resolveScratchProjectApp,
+  ScratchManager,
+  getScratchBundleDir,
+} from '../../src/scratch/scratchManager';
 import { AlApp } from '../../src/workspace/types';
 
 const makeApp = (overrides: Partial<AlApp> = {}): AlApp => ({
@@ -41,6 +51,10 @@ suite('ScratchManager', () => {
 
     test('rejects paths with alchemist but not alchemist-scratch', () => {
       assert.strictEqual(isScratchFile('/workspace/alchemist/src/main.al'), false);
+    });
+
+    test('recognizes a scratch file nested in its own bundle directory', () => {
+      assert.strictEqual(isScratchFile('/tmp/alchemist-scratch/scratch1/scratch1.al'), true);
     });
   });
 
@@ -140,5 +154,155 @@ suite('ScratchManager — resolveScratchProjectApp', () => {
     assert.strictEqual(r.mode, 'needsPrompt');
     if (r.mode !== 'needsPrompt') return;
     assert.strictEqual(r.choices.length, 2);
+  });
+});
+
+// AL.Runner 2.7.0's `execute` command requires `sourcePaths` entries to be
+// bundle directories, not individual .al files (passing the scratch file
+// itself fails with "bundle directory not found"). Each scratch file must
+// therefore live in its own same-named subdirectory of alchemist-scratch/.
+suite('ScratchManager — bundle directories', () => {
+  let tmpRoot: string;
+
+  setup(() => {
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'alchemist-scratch-test-'));
+  });
+
+  teardown(() => {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  test('getScratchBundleDir returns the directory containing the scratch file', () => {
+    const filePath = path.join(tmpRoot, 'alchemist-scratch', 'scratch3', 'scratch3.al');
+    assert.strictEqual(
+      getScratchBundleDir(filePath),
+      path.join(tmpRoot, 'alchemist-scratch', 'scratch3'),
+    );
+  });
+
+  test('newScratchFile creates the file inside its own same-named subdirectory', async () => {
+    const manager = new ScratchManager(tmpRoot);
+    await manager.newScratchFile(tmpRoot);
+
+    const scratchDir = manager.getScratchDir();
+    assert.ok(
+      fs.existsSync(path.join(scratchDir, 'scratch1', 'scratch1.al')),
+      'expected alchemist-scratch/scratch1/scratch1.al to exist',
+    );
+    const looseAlFiles = fs.readdirSync(scratchDir).filter((f) => f.endsWith('.al'));
+    assert.deepStrictEqual(looseAlFiles, [], 'no .al file should be loose directly in alchemist-scratch/');
+  });
+
+  test('migration moves a loose .al file into its own subdirectory', () => {
+    const scratchDir = path.join(tmpRoot, 'alchemist-scratch');
+    fs.mkdirSync(scratchDir, { recursive: true });
+    fs.writeFileSync(path.join(scratchDir, 'scratch1.al'), 'codeunit 50000 Scratch {}');
+
+    new ScratchManager(tmpRoot); // constructor performs migration
+
+    assert.ok(!fs.existsSync(path.join(scratchDir, 'scratch1.al')), 'loose file should have moved out of alchemist-scratch/');
+    assert.strictEqual(
+      fs.readFileSync(path.join(scratchDir, 'scratch1', 'scratch1.al'), 'utf-8'),
+      'codeunit 50000 Scratch {}',
+      'migrated file should keep its original content',
+    );
+  });
+
+  test('migration is idempotent — constructing twice does not nest or break', () => {
+    const scratchDir = path.join(tmpRoot, 'alchemist-scratch');
+    fs.mkdirSync(scratchDir, { recursive: true });
+    fs.writeFileSync(path.join(scratchDir, 'scratch1.al'), 'codeunit 50000 Scratch {}');
+
+    new ScratchManager(tmpRoot);
+    new ScratchManager(tmpRoot); // running again must be a no-op for already-migrated files
+
+    const bundleDir = path.join(scratchDir, 'scratch1');
+    assert.deepStrictEqual(
+      fs.readdirSync(bundleDir),
+      ['scratch1.al'],
+      'bundle dir must contain exactly the one file — no re-nesting',
+    );
+  });
+
+  test('migration does not overwrite an existing target', () => {
+    const scratchDir = path.join(tmpRoot, 'alchemist-scratch');
+    const bundleDir = path.join(scratchDir, 'scratch1');
+    fs.mkdirSync(bundleDir, { recursive: true });
+    fs.writeFileSync(path.join(bundleDir, 'scratch1.al'), 'ORIGINAL BUNDLED CONTENT');
+    // A stray loose file at top level shares the bundled file's name.
+    fs.writeFileSync(path.join(scratchDir, 'scratch1.al'), 'STRAY LOOSE CONTENT');
+
+    new ScratchManager(tmpRoot);
+
+    assert.strictEqual(
+      fs.readFileSync(path.join(bundleDir, 'scratch1.al'), 'utf-8'),
+      'ORIGINAL BUNDLED CONTENT',
+      'existing bundled file must not be clobbered',
+    );
+    assert.strictEqual(
+      fs.readFileSync(path.join(scratchDir, 'scratch1.al'), 'utf-8'),
+      'STRAY LOOSE CONTENT',
+      'stray loose file is left alone rather than overwriting the target',
+    );
+  });
+
+  test('counter continues correctly after migration (no collision with existing scratch dirs)', async () => {
+    const scratchDir = path.join(tmpRoot, 'alchemist-scratch');
+    fs.mkdirSync(scratchDir, { recursive: true });
+    // A gap: scratch2 is missing, scratch3 already exists.
+    fs.writeFileSync(path.join(scratchDir, 'scratch1.al'), 'codeunit 50000 Scratch {}');
+    fs.writeFileSync(path.join(scratchDir, 'scratch3.al'), 'codeunit 50000 Scratch {}');
+
+    const manager = new ScratchManager(tmpRoot);
+    await manager.newScratchFile(tmpRoot);
+
+    assert.ok(
+      fs.existsSync(path.join(scratchDir, 'scratch4', 'scratch4.al')),
+      'next file must continue after the highest existing index (scratch4), not collide with scratch2 or scratch1',
+    );
+  });
+
+  test('deleteScratchFile removes the now-empty bundle directory', async () => {
+    const manager = new ScratchManager(tmpRoot);
+    await manager.newScratchFile(tmpRoot);
+    const bundleDir = path.join(manager.getScratchDir(), 'scratch1');
+    const filePath = path.join(bundleDir, 'scratch1.al');
+    assert.ok(fs.existsSync(filePath));
+
+    const origActive = vscode.window.activeTextEditor;
+    try {
+      (vscode.window as any).activeTextEditor = {
+        document: { uri: { fsPath: filePath }, getText: () => '' },
+      };
+      await manager.deleteScratchFile();
+    } finally {
+      (vscode.window as any).activeTextEditor = origActive;
+    }
+
+    assert.ok(!fs.existsSync(filePath), 'scratch file should be deleted');
+    assert.ok(!fs.existsSync(bundleDir), 'now-empty bundle directory should be removed');
+  });
+
+  test('deleteScratchFile never removes a non-empty bundle directory', async () => {
+    const manager = new ScratchManager(tmpRoot);
+    await manager.newScratchFile(tmpRoot);
+    const bundleDir = path.join(manager.getScratchDir(), 'scratch1');
+    const filePath = path.join(bundleDir, 'scratch1.al');
+    // Something else lives alongside the scratch file in its bundle dir.
+    fs.writeFileSync(path.join(bundleDir, 'notes.txt'), 'keep me');
+
+    const origActive = vscode.window.activeTextEditor;
+    try {
+      (vscode.window as any).activeTextEditor = {
+        document: { uri: { fsPath: filePath }, getText: () => '' },
+      };
+      await manager.deleteScratchFile();
+    } finally {
+      (vscode.window as any).activeTextEditor = origActive;
+    }
+
+    assert.ok(!fs.existsSync(filePath), 'scratch file should still be deleted');
+    assert.ok(fs.existsSync(bundleDir), 'non-empty bundle directory must survive');
+    assert.ok(fs.existsSync(path.join(bundleDir, 'notes.txt')), 'unrelated file in the bundle dir must survive');
   });
 });

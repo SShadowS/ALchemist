@@ -9,7 +9,7 @@ import { CoverageHoverProvider } from './editor/hoverProvider';
 import { AlchemistDebugAdapterFactory, ALCHEMIST_DEBUG_TYPE } from './debug/debugAdapterFactory';
 import { AlchemistOutputChannel } from './output/outputChannel';
 import { StatusBarManager } from './output/statusBar';
-import { ScratchManager, isScratchFile, isProjectAware, resolveScratchProjectApp } from './scratch/scratchManager';
+import { ScratchManager, isScratchFile, isProjectAware, resolveScratchProjectApp, getScratchBundleDir } from './scratch/scratchManager';
 import { AlchemistTestController } from './testing/testController';
 import { findTestItemAtPosition } from './testing/testFinder';
 import { IterationStore } from './iteration/iterationStore';
@@ -413,6 +413,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestHo
 
       if (isScratchFile(filePath)) {
         // Scratch mode
+        // AL.Runner 2.7.0's `execute` command requires sourcePaths entries to
+        // be bundle directories, not individual .al files — pass the scratch
+        // file's bundle directory, not the file itself.
+        const bundleDir = getScratchBundleDir(filePath);
         const content = doc.getText();
         if (isProjectAware(content)) {
           const settingAppId = config.get<string>('scratchProjectAppId', '');
@@ -425,11 +429,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestHo
 
           if (resolution.mode === 'standalone') {
             statusBar.setRunning('scratch-standalone');
-            const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [filePath], captureValues: true, iterationTracking: true }));
+            const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [bundleDir], captureValues: true, iterationTracking: true }));
             if (result) handleResult(result);
           } else if (resolution.mode === 'app') {
             statusBar.setRunning('scratch-project');
-            const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [resolution.app.path, filePath], captureValues: true, iterationTracking: true }));
+            const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [resolution.app.path, bundleDir], captureValues: true, iterationTracking: true }));
             if (result) handleResult(result);
           } else {
             // needsPrompt
@@ -440,12 +444,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestHo
             if (!pick) return;
             await context.globalState.update(`alchemist.scratchApp.${filePath}`, pick.appId);
             statusBar.setRunning('scratch-project');
-            const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [pick.appPath, filePath], captureValues: true, iterationTracking: true }));
+            const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [pick.appPath, bundleDir], captureValues: true, iterationTracking: true }));
             if (result) handleResult(result);
           }
         } else {
           statusBar.setRunning('scratch-standalone');
-          const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [filePath], captureValues: true, iterationTracking: true }));
+          const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [bundleDir], captureValues: true, iterationTracking: true }));
           if (result) handleResult(result);
         }
       } else {
@@ -540,6 +544,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestHo
       const filePath = editor.document.uri.fsPath;
 
       if (isScratchFile(filePath)) {
+        // AL.Runner 2.7.0's `execute` command requires sourcePaths entries to
+        // be bundle directories, not individual .al files — pass the scratch
+        // file's bundle directory, not the file itself.
+        const bundleDir = getScratchBundleDir(filePath);
         const content = editor.document.getText();
         if (isProjectAware(content)) {
           const runNowConfig = vscode.workspace.getConfiguration('alchemist');
@@ -553,11 +561,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestHo
 
           if (resolution.mode === 'standalone') {
             statusBar.setRunning('scratch-standalone');
-            const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [filePath], captureValues: true, iterationTracking: true }));
+            const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [bundleDir], captureValues: true, iterationTracking: true }));
             if (result) handleResult(result);
           } else if (resolution.mode === 'app') {
             statusBar.setRunning('scratch-project');
-            const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [resolution.app.path, filePath], captureValues: true, iterationTracking: true }));
+            const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [resolution.app.path, bundleDir], captureValues: true, iterationTracking: true }));
             if (result) handleResult(result);
           } else {
             // needsPrompt
@@ -568,12 +576,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestHo
             if (!pick) return;
             await context.globalState.update(`alchemist.scratchApp.${filePath}`, pick.appId);
             statusBar.setRunning('scratch-project');
-            const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [pick.appPath, filePath], captureValues: true, iterationTracking: true }));
+            const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [pick.appPath, bundleDir], captureValues: true, iterationTracking: true }));
             if (result) handleResult(result);
           }
         } else {
           statusBar.setRunning('scratch-standalone');
-          const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [filePath], captureValues: true, iterationTracking: true }));
+          const result = await withEngine(eng => eng.executeScratch({ sourcePaths: [bundleDir], captureValues: true, iterationTracking: true }));
           if (result) handleResult(result);
         }
       } else {
