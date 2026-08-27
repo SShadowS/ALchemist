@@ -357,7 +357,16 @@ suite('TestController streaming (v2)', () => {
 
   test('loadDetailedCoverage callback returns details from getDetails', async () => {
     const cov: ProtoFileCoverage[] = [
-      { file: 'src/A.al', lines: [{ line: 5, hits: 2 }, { line: 6, hits: 0 }], totalStatements: 2, hitStatements: 1 },
+      {
+        file: 'src/A.al',
+        lines: [{ line: 5, hits: 2 }, { line: 6, hits: 0 }],
+        totalStatements: 2,
+        hitStatements: 1,
+        statements: [
+          { id: 0, scope: 'S', line: 5, column: 1, hits: 2 },
+          { id: 1, scope: 'S', line: 6, column: 1, hits: 0 },
+        ],
+      },
     ];
     const engine = new StubEngine([[]], [makeEmpty({ coverageV2: cov })]);
     const { mockController } = await makeController(engine);
@@ -377,9 +386,9 @@ suite('TestController streaming (v2)', () => {
     const details = await profile.loadDetailedCoverage(fakeRun, fc, fakeToken);
     assert.ok(Array.isArray(details));
     assert.strictEqual(details.length, 2);
-    // Lines are 1-based on input → 0-based positions.
-    assert.strictEqual((details[0].location as vscode.Position).line, 4);
-    assert.strictEqual((details[1].location as vscode.Position).line, 5);
+    // Lines are 1-based on input → 0-based positions, now carried as Ranges.
+    assert.strictEqual((details[0].location as vscode.Range).start.line, 4);
+    assert.strictEqual((details[1].location as vscode.Range).start.line, 5);
     assert.strictEqual(details[0].executed, 2);
     assert.strictEqual(details[1].executed, 0);
   });
