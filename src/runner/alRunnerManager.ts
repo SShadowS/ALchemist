@@ -1,16 +1,32 @@
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 
-// Minimum supported AL.Runner version. Newer releases provide:
-//  - 1.0.12+: differentiated exit codes (0/1/2/3), HTTP type compile fix,
-//    --output-junit flag, per-file caches.
-// TODO: wire into ensureInstalled/checkForUpdates to warn when an older
-// runner is resolved. Tracking as follow-up work; declared now so the
-// required version is discoverable in one place.
-const MIN_AL_RUNNER_VERSION = '1.0.12';
+/**
+ * Minimum supported AL.Runner version.
+ *
+ * 2.7.0 is the floor because two features depend on it and have no fallback:
+ * the per-statement coverage table (exact inline-value placement and hit
+ * counts) and the `--dap stdio` transport used by the debug adapter.
+ */
+export const MIN_AL_RUNNER_VERSION = '2.7.0';
+
+/** Negative when a < b, 0 when equal, positive when a > b. Pre-release suffixes are ignored. */
+export function compareSemver(a: string, b: string): number {
+  const parts = (v: string) => v.split('-')[0].split('.').map(n => parseInt(n, 10) || 0);
+  const [aMajor, aMinor, aPatch] = parts(a);
+  const [bMajor, bMinor, bPatch] = parts(b);
+  return (aMajor - bMajor) || (aMinor - bMinor) || (aPatch - bPatch);
+}
+
+/** First `major.minor.patch` in `al-runner --version` output, or undefined. */
+export function parseRunnerVersion(stdout: string): string | undefined {
+  const match = stdout.match(/(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)/);
+  return match ? match[1] : undefined;
+}
 
 export class AlRunnerManager {
   private resolvedPath: string | undefined;
+  private warnedVersion = false;
 
   async ensureInstalled(): Promise<string> {
     const configPath = vscode.workspace.getConfiguration('alchemist').get<string>('alRunnerPath', '')
@@ -18,6 +34,7 @@ export class AlRunnerManager {
       || '';
     if (configPath) {
       this.resolvedPath = configPath;
+      void this.warnIfBelowMinimum(configPath);
       return configPath;
     }
 
@@ -25,6 +42,7 @@ export class AlRunnerManager {
     const pathResult = await this.tryFindOnPath();
     if (pathResult) {
       this.resolvedPath = pathResult;
+      void this.warnIfBelowMinimum(pathResult);
       return pathResult;
     }
 
@@ -32,6 +50,7 @@ export class AlRunnerManager {
     const installed = await this.installViaDotnet();
     if (installed) {
       this.resolvedPath = installed;
+      void this.warnIfBelowMinimum(installed);
       return installed;
     }
 
@@ -40,6 +59,42 @@ export class AlRunnerManager {
 
   getPath(): string | undefined {
     return this.resolvedPath;
+  }
+
+  /**
+   * Warn once per session when the resolved runner predates the minimum.
+   * Best-effort: an unreadable `--version` is not treated as a failure,
+   * because the runtime notice in extension.ts still catches a missing
+   * statement table.
+   */
+  private async warnIfBelowMinimum(runnerPath: string): Promise<void> {
+    if (this.warnedVersion) return;
+    const stdout = await new Promise<string>((resolve) => {
+      cp.exec(`"${runnerPath}" --version`, (err, out) => resolve(err ? '' : out));
+    });
+    const version = parseRunnerVersion(stdout);
+    if (!version || compareSemver(version, MIN_AL_RUNNER_VERSION) >= 0) return;
+
+    this.warnedVersion = true;
+    const usingCustomPath = !!vscode.workspace.getConfiguration('alchemist').get<string>('alRunnerPath', '');
+    const message =
+      `ALchemist requires AL.Runner ${MIN_AL_RUNNER_VERSION} or newer (found ${version}). ` +
+      'Inline values, hit counts, and debugging are unavailable until it is updated.';
+    if (usingCustomPath) {
+      vscode.window.showWarningMessage(message);
+      return;
+    }
+    const action = await vscode.window.showWarningMessage(message, 'Update');
+    if (action !== 'Update') return;
+    const dotnetPath = vscode.workspace.getConfiguration('alchemist').get<string>('dotnetPath', '') || 'dotnet';
+    cp.exec(`${dotnetPath} tool update -g msdyn365bc.al.runner`, (err) => {
+      if (err) {
+        vscode.window.showErrorMessage(`Update failed: ${err.message}`);
+      } else {
+        vscode.window.showInformationMessage('AL.Runner updated successfully.');
+        this.tryFindOnPath().then((p) => { this.resolvedPath = p; });
+      }
+    });
   }
 
   private tryFindOnPath(): Promise<string | undefined> {

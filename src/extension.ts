@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { AlRunnerManager } from './runner/alRunnerManager';
+import { AlRunnerManager, MIN_AL_RUNNER_VERSION } from './runner/alRunnerManager';
 import { ServerProcess } from './execution/serverProcess';
 import { ServerExecutionEngine } from './execution/serverExecutionEngine';
 import { ExecutionEngine } from './execution/executionEngine';
@@ -77,6 +77,21 @@ export function shouldLogCaptureFilterDrop(
   stats: Pick<import('./editor/decorations').RenderStats, 'statementsAvailable' | 'captureCount' | 'capturesForActiveFile'>,
 ): boolean {
   return stats.statementsAvailable && stats.captureCount > 0 && stats.capturesForActiveFile === 0;
+}
+
+/**
+ * Decide whether the "no statement table" version-gate notice should fire.
+ * Complementary to `shouldLogCaptureFilterDrop`: that one fires when a
+ * statement table existed and the file filter dropped every capture; this
+ * one fires when captures arrived but there was no statement table at all —
+ * a runner older than `MIN_AL_RUNNER_VERSION`, or a v1 result. The two
+ * conditions differ only in `statementsAvailable`, so they can never both
+ * fire for the same run.
+ */
+export function shouldLogMissingStatementTable(
+  stats: Pick<import('./editor/decorations').RenderStats, 'statementsAvailable' | 'captureCount'>,
+): boolean {
+  return !stats.statementsAvailable && stats.captureCount > 0;
 }
 
 let runnerManager: AlRunnerManager;
@@ -330,6 +345,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestHo
         outputChannel.appendLine(`    file filter dropped all. editor=${renderStats.filePath}`);
         outputChannel.appendLine(`    workspacePath=${renderStats.workspacePath}`);
         outputChannel.appendLine(`    sample sourceFile=${renderStats.sampleCaptureSourceFile ?? '<undefined>'}`);
+      } else if (shouldLogMissingStatementTable(renderStats)) {
+        outputChannel.appendLine(
+          `    AL.Runner sent no statement table — inline values and hit counts require ${MIN_AL_RUNNER_VERSION} or newer.`,
+        );
       }
     } else {
       outputChannel.appendLine('  Inline: skipped (no active editor at result time)');
