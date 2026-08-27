@@ -169,3 +169,70 @@ suite('AlRunnerManager.warnIfBelowMinimum', () => {
     assert.strictEqual(warn.callCount, 0);
   });
 });
+
+/**
+ * Regression coverage for the sibling of the env-var bug fixed above:
+ * `checkForUpdates` had its own independent "skip for a custom path" check
+ * that, like the original `warnIfBelowMinimum`, only re-read the
+ * `alRunnerPath` setting and missed `ALCHEMIST_RUNNER_PATH`. Both call sites
+ * now share `resolveConfiguredPath()`, so these tests exercise
+ * `checkForUpdates()` itself (not the private helper directly) — they fail
+ * if that sharing is ever undone and the env-var gap reopens.
+ */
+suite('AlRunnerManager.checkForUpdates — custom path resolution', () => {
+  let sandbox: sinon.SinonSandbox;
+  let execStub: sinon.SinonStub;
+  let configOverrides: Record<string, string>;
+
+  setup(() => {
+    sandbox = sinon.createSandbox();
+    configOverrides = {};
+    sandbox.stub(vscode.workspace, 'getConfiguration').callsFake(() => ({
+      get: (key: string, defaultValue?: unknown) => (key in configOverrides ? configOverrides[key] : defaultValue),
+    }) as unknown as vscode.WorkspaceConfiguration);
+    const realCp: typeof cp = require('child_process');
+    execStub = sandbox.stub(realCp, 'exec') as unknown as sinon.SinonStub;
+  });
+
+  teardown(() => {
+    sandbox.restore();
+  });
+
+  test('env-var-resolved path (ALCHEMIST_RUNNER_PATH) alone: returns early, no dotnet tool list exec', async () => {
+    const originalEnv = process.env.ALCHEMIST_RUNNER_PATH;
+    process.env.ALCHEMIST_RUNNER_PATH = 'C:/forks/al-runner-fork/al-runner.exe';
+    try {
+      // alchemist.alRunnerPath setting is left unset — only the env var says
+      // this is a user-configured runner.
+      const manager = new AlRunnerManager();
+      await manager.checkForUpdates();
+
+      assert.strictEqual(execStub.callCount, 0, 'no dotnet tool list — a user-configured runner should never be nagged about updates');
+    } finally {
+      if (originalEnv === undefined) delete process.env.ALCHEMIST_RUNNER_PATH;
+      else process.env.ALCHEMIST_RUNNER_PATH = originalEnv;
+    }
+  });
+
+  test('alRunnerPath setting alone: returns early, no dotnet tool list exec', async () => {
+    configOverrides.alRunnerPath = 'C:/custom/al-runner.exe';
+
+    const manager = new AlRunnerManager();
+    await manager.checkForUpdates();
+
+    assert.strictEqual(execStub.callCount, 0);
+  });
+
+  test('neither configured: proceeds to the dotnet tool list check', async () => {
+    // Negative control for the two tests above — proves checkForUpdates
+    // does not simply always return early (which would make those tests
+    // pass vacuously).
+    const manager = new AlRunnerManager();
+    await manager.checkForUpdates();
+
+    assert.ok(
+      execStub.getCalls().some(c => /tool list -g/.test(c.args[0])),
+      'proceeds to dotnet tool list when nothing is user-configured',
+    );
+  });
+});

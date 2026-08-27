@@ -35,10 +35,23 @@ export class AlRunnerManager {
   private resolvedPath: string | undefined;
   private warnedVersion = false;
 
-  async ensureInstalled(): Promise<string> {
-    const configPath = vscode.workspace.getConfiguration('alchemist').get<string>('alRunnerPath', '')
+  /**
+   * The al-runner path from `alchemist.alRunnerPath` or `ALCHEMIST_RUNNER_PATH`
+   * (e.g. `.vscode/launch.json` pointing at a local fork build), or `''` when
+   * neither is set. The single place both `ensureInstalled` (to resolve the
+   * path to run) and `checkForUpdates` (to skip nagging about a runner the
+   * user chose, not one we installed) read this from — a second, independent
+   * read of just the setting is what previously let the env-var case
+   * silently diverge from the setting-only case in both call sites.
+   */
+  private resolveConfiguredPath(): string {
+    return vscode.workspace.getConfiguration('alchemist').get<string>('alRunnerPath', '')
       || process.env.ALCHEMIST_RUNNER_PATH
       || '';
+  }
+
+  async ensureInstalled(): Promise<string> {
+    const configPath = this.resolveConfiguredPath();
     if (configPath) {
       this.resolvedPath = configPath;
       // configPath came from the alRunnerPath setting or ALCHEMIST_RUNNER_PATH
@@ -171,8 +184,7 @@ export class AlRunnerManager {
   }
 
   async checkForUpdates(): Promise<void> {
-    const configPath = vscode.workspace.getConfiguration('alchemist').get<string>('alRunnerPath', '');
-    if (configPath) return; // Skip update checks for custom paths
+    if (this.resolveConfiguredPath()) return; // Skip update checks for a user-configured path (setting or ALCHEMIST_RUNNER_PATH)
 
     const dotnetPath = vscode.workspace.getConfiguration('alchemist').get<string>('dotnetPath', '') || 'dotnet';
 
