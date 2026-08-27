@@ -1,6 +1,9 @@
 import * as assert from 'assert';
+import * as path from 'path';
 import { IterationStore } from '../../src/iteration/iterationStore';
 import { IterationData } from '../../src/iteration/types';
+import { CoverageModel } from '../../src/execution/coverageModel';
+import { CoverageHoverProvider } from '../../src/editor/hoverProvider';
 
 suite('HoverProvider', () => {
   // Test the deduplication logic directly
@@ -121,5 +124,82 @@ suite('HoverProvider — iteration-aware', () => {
       matching.map(cv => cv.value),
       ['1', '3', '6', '10', '15'],
     );
+  });
+});
+
+suite('CoverageHoverProvider — statement breakdown', () => {
+  const WS = path.resolve('/ws');
+  const FILE = path.join(WS, 'src', 'Foo.al');
+
+  function providerFor(statements: any[], captured: any[] = []) {
+    const model = CoverageModel.fromFileCoverage([{
+      file: 'src/Foo.al', lines: [], totalStatements: statements.length,
+      hitStatements: statements.filter(s => s.hits > 0).length, statements,
+    }], WS);
+    const dm: any = {
+      getCoverageModel: () => model,
+      getCapturedValues: () => captured,
+    };
+    return new CoverageHoverProvider(dm);
+  }
+
+  function docAt(line0: number, word: string): [any, any] {
+    const document: any = {
+      uri: { fsPath: FILE },
+      getWordRangeAtPosition: () => (word ? { start: { line: line0, character: 0 } } : undefined),
+      getText: () => word,
+    };
+    return [document, { line: line0, character: 0 }];
+  }
+
+  function hoverText(hover: any): string {
+    return (hover?.contents?.[0]?.value ?? hover?.contents?.value ?? '') as string;
+  }
+
+  test('multi-statement line lists each statement with its column span and count', () => {
+    const provider = providerFor([
+      { id: 0, scope: 'S', line: 4, column: 5, endLine: 4, endColumn: 20, hits: 10 },
+      { id: 1, scope: 'S', line: 4, column: 22, endLine: 4, endColumn: 40, hits: 1 },
+    ]);
+    const [document, position] = docAt(3, '');
+    const text = hoverText(provider.provideHover(document, position));
+
+    assert.ok(text.includes('col 5–20'), `expected first span, got: ${text}`);
+    assert.ok(text.includes('10×'), `expected first count, got: ${text}`);
+    assert.ok(text.includes('col 22–40'), `expected second span, got: ${text}`);
+  });
+
+  test('single statement hit once renders status without a breakdown list', () => {
+    const provider = providerFor([{ id: 0, scope: 'S', line: 4, column: 5, hits: 1 }]);
+    const [document, position] = docAt(3, '');
+    const text = hoverText(provider.provideHover(document, position));
+
+    assert.ok(text.includes('Covered'), `expected coverage status, got: ${text}`);
+    assert.ok(!text.includes('col 5'), `did not expect a breakdown, got: ${text}`);
+  });
+
+  test('uncovered statement reports Not Covered', () => {
+    const provider = providerFor([{ id: 0, scope: 'S', line: 4, column: 5, hits: 0 }]);
+    const [document, position] = docAt(3, '');
+    const text = hoverText(provider.provideHover(document, position));
+
+    assert.ok(text.includes('Not Covered'), `got: ${text}`);
+  });
+
+  test('line with no statements and no captures yields no hover', () => {
+    const provider = providerFor([{ id: 0, scope: 'S', line: 4, column: 5, hits: 1 }]);
+    const [document, position] = docAt(30, '');
+    assert.strictEqual(provider.provideHover(document, position), undefined);
+  });
+
+  test('statement without end position falls back to the start column alone', () => {
+    const provider = providerFor([
+      { id: 0, scope: 'S', line: 4, column: 5, hits: 3 },
+      { id: 1, scope: 'S', line: 4, column: 22, hits: 2 },
+    ]);
+    const [document, position] = docAt(3, '');
+    const text = hoverText(provider.provideHover(document, position));
+
+    assert.ok(text.includes('col 5:'), `expected bare column form, got: ${text}`);
   });
 });

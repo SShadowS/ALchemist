@@ -173,15 +173,16 @@ export class CoverageHoverProvider implements vscode.HoverProvider {
     hoveredWord: string,
     lineNumber: number,
   ): vscode.Hover | undefined {
-    const lineCoverage = this.decorationManager.getLineCoverage(filePath);
+    const statements = this.decorationManager.getCoverageModel()
+      ?.forFile(filePath)
+      ?.statementsOnLine(lineNumber) ?? [];
     const capturedValues = this.decorationManager.getCapturedValues();
 
-    const coverageEntry = lineCoverage?.get(lineNumber);
     const matchingValues = hoveredWord
       ? capturedValues.filter((cv) => cv.variableName.toLowerCase() === hoveredWord.toLowerCase())
       : [];
 
-    if (!coverageEntry && matchingValues.length === 0) return undefined;
+    if (statements.length === 0 && matchingValues.length === 0) return undefined;
 
     const markdown = new vscode.MarkdownString();
     markdown.isTrusted = true;
@@ -214,12 +215,26 @@ export class CoverageHoverProvider implements vscode.HoverProvider {
       markdown.appendMarkdown('\n');
     }
 
-    // Show coverage info
-    if (coverageEntry) {
-      const status = coverageEntry.hits > 0 ? 'Covered' : 'Not Covered';
+    // Coverage, from AL.Runner's per-statement table. A line's hit count is
+    // the MAX across its statements — summing would report a line with three
+    // statements each hit once as three executions.
+    if (statements.length > 0) {
+      const lineHits = Math.max(...statements.map(s => s.hits));
       markdown.appendMarkdown(`**Statement Coverage**\n\n`);
-      markdown.appendMarkdown(`Status: ${status}\n\n`);
-      markdown.appendMarkdown(`Hits: ${coverageEntry.hits}\n`);
+      markdown.appendMarkdown(`Status: ${lineHits > 0 ? 'Covered' : 'Not Covered'}\n\n`);
+      markdown.appendMarkdown(`Hits: ${lineHits}\n`);
+
+      // Break the line down only when the rollup hides something: several
+      // statements share the line, or one of them ran repeatedly.
+      if (statements.length > 1) {
+        markdown.appendMarkdown('\n');
+        for (const s of statements) {
+          const span = s.endColumn !== undefined && s.endLine === s.line
+            ? `col ${s.column}–${s.endColumn}`
+            : `col ${s.column}`;
+          markdown.appendMarkdown(`- ${span}: ${s.hits}×\n`);
+        }
+      }
     }
 
     return new vscode.Hover(markdown);

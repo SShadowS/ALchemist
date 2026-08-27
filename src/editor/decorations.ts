@@ -118,8 +118,6 @@ export class DecorationManager {
   private readonly hitCountDecorationType: vscode.TextEditorDecorationType;
   private flashTimeout: ReturnType<typeof setTimeout> | undefined;
 
-  // Track per-file line coverage for hover provider
-  private lineCoverageMap = new Map<string, Map<number, { hits: number }>>();
   // Track captured variable values per test (v2 streaming wires via setCapturedValuesForTest;
   // v1 / save-on-save fallback stores into the LEGACY_SCOPE_KEY union bucket).
   private capturedValuesByTest = new Map<string, CapturedValue[]>();
@@ -307,14 +305,9 @@ export class DecorationManager {
   }
 
   clearAll(): void {
-    this.lineCoverageMap.clear();
     for (const editor of vscode.window.visibleTextEditors) {
       this.clearDecorations(editor);
     }
-  }
-
-  getLineCoverage(filePath: string): Map<number, { hits: number }> | undefined {
-    return this.lineCoverageMap.get(filePath);
   }
 
   /**
@@ -378,13 +371,11 @@ export class DecorationManager {
 
     const covered: vscode.DecorationOptions[] = [];
     const uncovered: vscode.DecorationOptions[] = [];
-    const fileMap = new Map<number, { hits: number }>();
 
     for (const line of entry.lines) {
       const lineIndex = line.number - 1; // VSCode is 0-indexed
       if (lineIndex < 0 || lineIndex >= editor.document.lineCount) continue;
       const range = new vscode.Range(lineIndex, 0, lineIndex, 0);
-      fileMap.set(line.number, { hits: line.hits });
 
       if (line.hits > 0) {
         covered.push({
@@ -399,7 +390,6 @@ export class DecorationManager {
       }
     }
 
-    this.lineCoverageMap.set(filePath, fileMap);
     editor.setDecorations(this.coveredDecorationType, covered);
     editor.setDecorations(this.uncoveredDecorationType, uncovered);
   }
@@ -762,6 +752,5 @@ export class DecorationManager {
     if (this.flashTimeout) {
       clearTimeout(this.flashTimeout);
     }
-    this.lineCoverageMap.clear();
   }
 }

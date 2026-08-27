@@ -233,6 +233,12 @@ module.exports = {
     }
   },
   MarkdownString: MockMarkdownString,
+  Hover: class Hover {
+    constructor(contents, range) {
+      this.contents = Array.isArray(contents) ? contents : [contents];
+      this.range = range;
+    }
+  },
   ThemeColor: class ThemeColor {
     constructor(id) { this.id = id; }
   },
