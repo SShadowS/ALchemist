@@ -253,9 +253,21 @@ suite('statement table — end to end', () => {
     // DecorationManager.applyInlineCapturedValues) — an untitled document's
     // URI never equals that resolved path, so nothing would ever match.
     const document = await vscode.workspace.openTextDocument(filePath);
-    const editor = await vscode.window.showTextDocument(document);
+    const realEditor = await vscode.window.showTextDocument(document);
+
+    // Route through wrapEditor (like the suite above) so setDecorations calls
+    // against hitCountDecorationType are observable — the real TextEditor's
+    // setDecorations slot cannot be proxied or read back directly. Without
+    // this, the test's ×N claim in its title was unverifiable (final review
+    // C1/F2(a)).
+    type Call = { type: any; ranges: any[] };
+    const calls: Call[] = [];
+    const editor = wrapEditor(realEditor, calls);
 
     const dm = new DecorationManager(path.resolve(__dirname, '../../../'));
+    const captureType = (dm as unknown as { capturedValueDecorationType: unknown }).capturedValueDecorationType;
+    const hitCountType = (dm as unknown as { hitCountDecorationType: unknown }).hitCountDecorationType;
+
     const result: any = {
       mode: 'test',
       tests: [{
@@ -277,12 +289,138 @@ suite('statement table — end to end', () => {
     // ordering by covered line would have put it on line 12.
     assert.strictEqual(stats.inlineDecorationsPainted, 1);
     assert.strictEqual(dm.getCoverageModel()!.forFile(filePath)!.lookup('DoWork', 2)!.line, 13);
+
+    const captureRanges = calls.filter(c => c.type === captureType).pop()?.ranges ?? [];
+    assert.strictEqual(captureRanges.length, 1, 'exactly one captured-value decoration painted');
+    assert.strictEqual(captureRanges[0].range.start.line, 12, 'capture lands on 0-based line 12 (1-based 13)');
+
+    // Fixture statements 0 and 1 both live on 1-based line 12, each hit 10
+    // times — this is the ×N case the test's title has always claimed. The
+    // capture above lives on a different line (13), so this exercises ×N
+    // independently of capture placement.
+    const hitCountRanges = calls.filter(c => c.type === hitCountType).pop()?.ranges ?? [];
+    assert.strictEqual(hitCountRanges.length, 1, 'exactly one hit-count decoration painted');
+    assert.strictEqual(hitCountRanges[0].range.start.line, 11, '×N lands on 0-based line 11 (1-based 12)');
+    assert.strictEqual(hitCountRanges[0].renderOptions.after.contentText.trim(), '×10');
+
+    dm.dispose();
+  });
+
+  test('captured value and ×N hit count on the SAME line stack in spec order (capture text before hit-count text)', async () => {
+    // Spec §3's last bullet: "hit-count text renders after the capture text
+    // (two decoration types stack in registration order; verify against the
+    // VS Code decoration API and pin with an integration test)". §7 lists
+    // "Decoration stacking order (capture text + hit-count text on one line)"
+    // as a required integration test. It did not exist anywhere on the
+    // branch before this fix (final review C1 / task F2(b)).
+    //
+    // The VS Code extension API has no way to read back the final rendered
+    // pixel order of two same-range "after" decorations — that is internal
+    // renderer state, not something `setDecorations` or any other API
+    // exposes. What IS observable, and what the spec's own wording relies on
+    // ("stack in registration order"), is *registration* order: the sequence
+    // in which `vscode.window.createTextEditorDecorationType` was actually
+    // CALLED. That is a real API call sequence, not a source-order artefact:
+    // `Object.keys()`/enumeration order was tried first and rejected — with
+    // `target: ES2022` (tsconfig.json) TypeScript emits real class-field
+    // semantics, which pre-define every declared field as `undefined` in
+    // CLASS-BODY declaration order before the constructor body runs, so
+    // property enumeration order is fixed by where the fields are declared,
+    // not by the order the constructor later assigns
+    // `createTextEditorDecorationType(...)` to them — reordering the two
+    // assignment statements alone does not move the two fields relative to
+    // each other in `Object.keys()`. Spying on the real
+    // `createTextEditorDecorationType` call sequence instead observes the
+    // one thing that actually varies when those statements are reordered.
+    const vscode = require('vscode');
+    const sinon = require('sinon');
+    const fixture = JSON.parse(
+      fs.readFileSync(path.resolve(__dirname, '../../../test/fixtures', 'v2-summary-statements.json'), 'utf8'),
+    );
+    const workspacePath = path.resolve(__dirname, '../../../test/fixtures');
+    const filePath = path.join(workspacePath, 'src', 'Foo.al');
+
+    const document = await vscode.workspace.openTextDocument(filePath);
+    const realEditor = await vscode.window.showTextDocument(document);
+
+    type Call = { type: any; ranges: any[] };
+    const calls: Call[] = [];
+    const editor = wrapEditor(realEditor, calls);
+
+    const createSpy = sinon.spy(vscode.window, 'createTextEditorDecorationType');
+    let dm: DecorationManager;
+    let captureType: unknown;
+    let hitCountType: unknown;
+    try {
+      dm = new DecorationManager(path.resolve(__dirname, '../../../'));
+      captureType = (dm as unknown as { capturedValueDecorationType: unknown }).capturedValueDecorationType;
+      hitCountType = (dm as unknown as { hitCountDecorationType: unknown }).hitCountDecorationType;
+
+      const createdOrder: unknown[] = createSpy.returnValues;
+      const captureCallIdx = createdOrder.indexOf(captureType);
+      const hitCountCallIdx = createdOrder.indexOf(hitCountType);
+      assert.ok(captureCallIdx >= 0 && hitCountCallIdx >= 0, 'both decoration types must have been created via createTextEditorDecorationType');
+      assert.ok(
+        captureCallIdx < hitCountCallIdx,
+        `createTextEditorDecorationType must be called for capturedValueDecorationType before hitCountDecorationType, ` +
+        `so its after-text renders first (spec §3); got capture at call index ${captureCallIdx}, hit-count at ${hitCountCallIdx}`,
+      );
+    } finally {
+      createSpy.restore();
+    }
+
+    // Statement 0 lives on 1-based line 12, hit 10 times, sharing that line
+    // with statement 1 (also hit 10 times) — so line 12 gets BOTH a captured
+    // value and a ×10 hit count.
+    const result: any = {
+      mode: 'test',
+      tests: [{
+        name: 'T', status: 'passed', alSourceFile: 'src/Foo.al',
+        capturedValues: [
+          { scopeName: 'DoWork', alSourceFile: 'src/Foo.al', variableName: 'first', value: '5', statementId: 0 },
+        ],
+      }],
+      messages: [], stderrOutput: [],
+      summary: { passed: 1, failed: 0, errors: 0, total: 1 },
+      coverage: [], exitCode: 0, durationMs: 5, capturedValues: [], cached: false,
+      iterations: [], protocolVersion: 2, coverageV2: fixture.coverage,
+    };
+
+    dm.applyResults(editor, result, workspacePath);
+
+    const captureRanges = calls.filter(c => c.type === captureType).pop()?.ranges ?? [];
+    const hitCountRanges = calls.filter(c => c.type === hitCountType).pop()?.ranges ?? [];
+
+    assert.strictEqual(captureRanges.length, 1, 'captured value must be painted on line 12');
+    assert.strictEqual(captureRanges[0].range.start.line, 11, 'capture lands on 0-based line 11 (1-based 12)');
+    assert.strictEqual(hitCountRanges.length, 1, 'hit count must be painted on the SAME line');
+    assert.strictEqual(hitCountRanges[0].range.start.line, 11, '×N lands on the same 0-based line 11');
+    assert.strictEqual(hitCountRanges[0].renderOptions.after.contentText.trim(), '×10');
+
     dm.dispose();
   });
 
   test('a v2 run with no statement table renders nothing and does not throw', async () => {
+    // Regression coverage for the no-fallback contract (spec §5): a run
+    // whose coverage carries no statements[] must render zero captures.
+    //
+    // This test previously opened an UNTITLED in-memory document while
+    // asserting `inlineDecorationsPainted === 0` as evidence of "no
+    // statement table, no fallback". But applyInlineCapturedValues filters
+    // captures by resolved path BEFORE it ever consults the statement table
+    // (decorations.ts:511-518): an untitled document's fsPath can never
+    // equal a resolved real-file path, so the capture was dropped by the
+    // path filter and the assertion passed regardless of whether placement
+    // worked at all — the same defect fixed one test earlier in this file
+    // (final review C2 / task F3). Fixed the same way: open the real fixture
+    // file the capture's sourceFile resolves to, so the path DOES match and
+    // the assertion exercises the intended contract — a path match with NO
+    // statement table paints nothing.
     const vscode = require('vscode');
-    const document = await vscode.workspace.openTextDocument({ language: 'al', content: '// one line\n' });
+    const workspacePath = path.resolve(__dirname, '../../../test/fixtures');
+    const filePath = path.join(workspacePath, 'src', 'Foo.al');
+
+    const document = await vscode.workspace.openTextDocument(filePath);
     const editor = await vscode.window.showTextDocument(document);
 
     const dm = new DecorationManager(path.resolve(__dirname, '../../../'));
@@ -298,10 +436,11 @@ suite('statement table — end to end', () => {
       summary: { passed: 1, failed: 0, errors: 0, total: 1 },
       coverage: [], exitCode: 0, durationMs: 5, capturedValues: [], cached: false,
       iterations: [], protocolVersion: 2,
+      // Deliberately no `statements[]` — the no-fallback case under test.
       coverageV2: [{ file: 'src/Foo.al', lines: [{ line: 1, hits: 1 }], totalStatements: 1, hitStatements: 1 }],
     };
 
-    const stats = dm.applyResults(editor, result, path.resolve('/ws'));
+    const stats = dm.applyResults(editor, result, workspacePath);
 
     assert.strictEqual(stats.statementsAvailable, false);
     assert.strictEqual(stats.inlineDecorationsPainted, 0);
