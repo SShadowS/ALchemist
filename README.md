@@ -43,11 +43,15 @@ Live execution and inline feedback for AL (Business Central) — like [Quokka.js
 | **Clickable stack frames** | Failure stack traces in Test Results are clickable; jump to the exact `.al` line |
 | **Native coverage rendering** | Gutter icons + Coverage View panel powered by VS Code's built-in coverage UI (Run with Coverage profile) |
 | **Cancel mid-run** | Stop in Test Explorer cancels the current run; daemon stays warm for the next request |
+| **Inline hit counts** | Lines whose most-executed statement ran more than once show `×N` after the line (e.g. a loop body shows `×10`) |
+| **Per-statement hover breakdown** | Hovering a line where more than one statement shares it shows each statement's column span and its own hit count |
+| **Breakpoint debugging** | Set breakpoints in AL test code and debug via AL.Runner's Debug Adapter — see [Debugging](#debugging) below |
 
 ## Prerequisites
 
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) (AL.Runner is installed automatically)
 - VS Code 1.88.0 or later
+- AL.Runner **2.7.0 or newer**. ALchemist reads AL.Runner's per-statement coverage table to place inline values and hit counts at exact source positions, and uses AL.Runner's Debug Adapter for breakpoint debugging — neither has a fallback on older runners.
 
 ## Installation
 
@@ -84,6 +88,17 @@ codeunit 50000 Scratch
 ```
 
 For project-aware scratch files, add `//alchemist: project` as the first line to access workspace objects.
+
+## Debugging
+
+Set breakpoints directly in your AL test code, then start a debug session either:
+
+- From the Test Explorer — click the **Debug** action (next to Run) on a test, codeunit, or the whole suite, or
+- Via the **`ALchemist: Debug AL Tests`** launch configuration in `launch.json` (`Run and Debug` panel → select it → `F5`).
+
+AL.Runner launches under its Debug Adapter (`--dap stdio`) and stops at your breakpoints. Breakpoints, pause, the call stack, and variable inspection all work.
+
+**Stepping is not implemented upstream yet.** `Step Over`, `Step Into`, and `Step Out` currently behave like `Continue` — they run to the next breakpoint rather than advancing one statement. Rely on breakpoints (including conditional ones) until AL.Runner adds native stepping support.
 
 ## Architecture
 

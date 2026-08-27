@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
 import * as path from 'path';
 import { DecorationManager } from '../../src/editor/decorations';
 import { ExecutionResult } from '../../src/runner/outputParser';
@@ -233,6 +234,77 @@ suite('Integration — inline captured-value rendering through real VS Code APIs
       `v1 path must render no captures without a statement table; got ${nonEmpty.length} non-empty call(s)`,
     );
 
+    dm.dispose();
+  });
+});
+
+suite('statement table — end to end', () => {
+  test('captures land on their exact lines and ×N appears on the repeated line', async () => {
+    const vscode = require('vscode');
+    const fixture = JSON.parse(
+      fs.readFileSync(path.resolve(__dirname, '../../../test/fixtures', 'v2-summary-statements.json'), 'utf8'),
+    );
+    const workspacePath = path.resolve(__dirname, '../../../test/fixtures');
+    const filePath = path.join(workspacePath, 'src', 'Foo.al');
+
+    // Must be a real file on disk, not an untitled in-memory document: the
+    // capture's `sourceFile` is resolved against `workspacePath` and matched
+    // against `editor.document.uri.fsPath` (see
+    // DecorationManager.applyInlineCapturedValues) — an untitled document's
+    // URI never equals that resolved path, so nothing would ever match.
+    const document = await vscode.workspace.openTextDocument(filePath);
+    const editor = await vscode.window.showTextDocument(document);
+
+    const dm = new DecorationManager(path.resolve(__dirname, '../../../'));
+    const result: any = {
+      mode: 'test',
+      tests: [{
+        name: 'T', status: 'passed', alSourceFile: 'src/Foo.al',
+        capturedValues: [
+          { scopeName: 'DoWork', alSourceFile: 'src/Foo.al', variableName: 'total', value: '55', statementId: 2 },
+        ],
+      }],
+      messages: [], stderrOutput: [],
+      summary: { passed: 1, failed: 0, errors: 0, total: 1 },
+      coverage: [], exitCode: 0, durationMs: 5, capturedValues: [], cached: false,
+      iterations: [], protocolVersion: 2, coverageV2: fixture.coverage,
+    };
+
+    const stats = dm.applyResults(editor, result, workspacePath);
+
+    assert.strictEqual(stats.statementsAvailable, true);
+    // Statement 2 lives on 1-based line 13 — the capture must land there, and
+    // ordering by covered line would have put it on line 12.
+    assert.strictEqual(stats.inlineDecorationsPainted, 1);
+    assert.strictEqual(dm.getCoverageModel()!.forFile(filePath)!.lookup('DoWork', 2)!.line, 13);
+    dm.dispose();
+  });
+
+  test('a v2 run with no statement table renders nothing and does not throw', async () => {
+    const vscode = require('vscode');
+    const document = await vscode.workspace.openTextDocument({ language: 'al', content: '// one line\n' });
+    const editor = await vscode.window.showTextDocument(document);
+
+    const dm = new DecorationManager(path.resolve(__dirname, '../../../'));
+    const result: any = {
+      mode: 'test',
+      tests: [{
+        name: 'T', status: 'passed', alSourceFile: 'src/Foo.al',
+        capturedValues: [
+          { scopeName: 'DoWork', alSourceFile: 'src/Foo.al', variableName: 'x', value: '1', statementId: 0 },
+        ],
+      }],
+      messages: [], stderrOutput: [],
+      summary: { passed: 1, failed: 0, errors: 0, total: 1 },
+      coverage: [], exitCode: 0, durationMs: 5, capturedValues: [], cached: false,
+      iterations: [], protocolVersion: 2,
+      coverageV2: [{ file: 'src/Foo.al', lines: [{ line: 1, hits: 1 }], totalStatements: 1, hitStatements: 1 }],
+    };
+
+    const stats = dm.applyResults(editor, result, path.resolve('/ws'));
+
+    assert.strictEqual(stats.statementsAvailable, false);
+    assert.strictEqual(stats.inlineDecorationsPainted, 0);
     dm.dispose();
   });
 });

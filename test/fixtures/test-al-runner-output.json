@@ -11,6 +11,21 @@
   "errors": 0,
   "total": 1,
   "exitCode": 0,
+  "coverage": [
+    {
+      "file": "src/Test.al",
+      "lines": [
+        { "line": 11, "hits": 10 },
+        { "line": 12, "hits": 1 }
+      ],
+      "totalStatements": 2,
+      "hitStatements": 2,
+      "statements": [
+        { "id": 1, "scope": "DoMethodName_Scope__66985615", "line": 11, "column": 9, "endLine": 11, "endColumn": 30, "hits": 10 },
+        { "id": 0, "scope": "DoMethodName", "line": 12, "column": 9, "endLine": 12, "endColumn": 40, "hits": 1 }
+      ]
+    }
+  ],
   "capturedValues": [
     {
       "scopeName": "DoMethodName_Scope__66985615",
