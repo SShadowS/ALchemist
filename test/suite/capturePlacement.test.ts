@@ -188,4 +188,42 @@ suite('capture placement via statement table', () => {
     assert.strictEqual(model!.forFile(FILE)?.lookup('DoWork', 0)?.hits, 4);
     dm.dispose();
   });
+
+  test('clearAll resets the coverage model — hover must not report a cleared run\'s coverage (F4)', () => {
+    const calls: DecorationCall[] = [];
+    const dm = new DecorationManager(__dirname);
+    const coverage: FileCoverage[] = [{
+      file: 'src/Foo.al',
+      lines: [{ line: 12, hits: 4 }],
+      totalStatements: 1,
+      hitStatements: 1,
+      statements: [{ id: 0, scope: 'DoWork', line: 12, column: 5, hits: 4 }],
+    }];
+
+    dm.applyResults(makeFakeEditor(FILE, calls), v2Result([], coverage), WS);
+    assert.ok(dm.getCoverageModel(), 'model is present right after the run');
+
+    dm.clearAll();
+    assert.strictEqual(dm.getCoverageModel(), undefined, 'clearAll must drop the coverage model, not just the visible decorations');
+
+    dm.dispose();
+  });
+
+  test('dispose resets the coverage model too (F4)', () => {
+    const calls: DecorationCall[] = [];
+    const dm = new DecorationManager(__dirname);
+    const coverage: FileCoverage[] = [{
+      file: 'src/Foo.al',
+      lines: [{ line: 12, hits: 4 }],
+      totalStatements: 1,
+      hitStatements: 1,
+      statements: [{ id: 0, scope: 'DoWork', line: 12, column: 5, hits: 4 }],
+    }];
+
+    dm.applyResults(makeFakeEditor(FILE, calls), v2Result([], coverage), WS);
+    assert.ok(dm.getCoverageModel(), 'model is present right after the run');
+
+    dm.dispose();
+    assert.strictEqual(dm.getCoverageModel(), undefined, 'dispose must drop the coverage model');
+  });
 });

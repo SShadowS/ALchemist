@@ -308,6 +308,7 @@ export class DecorationManager {
     for (const editor of vscode.window.visibleTextEditors) {
       this.clearDecorations(editor);
     }
+    this.coverageModel = undefined;
   }
 
   /**
@@ -616,13 +617,16 @@ export class DecorationManager {
     flashDurationMs: number,
     loopLineRange?: { start: number; end: number },
   ): void {
-    // Clear existing iteration-specific decorations
+    // Clear existing iteration-specific decorations. hitCountDecorationType
+    // is cleared here too: it paints whole-run ×N counts, which would
+    // otherwise persist on screen over this single-iteration view (F5).
     editor.setDecorations(this.capturedValueDecorationType, []);
     editor.setDecorations(this.messageDecorationType, []);
     editor.setDecorations(this.changedValueFlashDecorationType, []);
     editor.setDecorations(this.coveredDecorationType, []);
     editor.setDecorations(this.uncoveredDecorationType, []);
     editor.setDecorations(this.dimmedDecorationType, []);
+    editor.setDecorations(this.hitCountDecorationType, []);
 
     if (this.flashTimeout) {
       clearTimeout(this.flashTimeout);
@@ -752,5 +756,6 @@ export class DecorationManager {
     if (this.flashTimeout) {
       clearTimeout(this.flashTimeout);
     }
+    this.coverageModel = undefined;
   }
 }

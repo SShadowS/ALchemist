@@ -170,4 +170,34 @@ suite('hit-count decorations', () => {
       dm.dispose();
     }
   });
+
+  test('applyIterationView clears whole-run hit counts so they do not persist over the per-iteration view (F5)', () => {
+    const calls: DecorationCall[] = [];
+    const dm = new DecorationManager(__dirname);
+
+    // A normal run paints a whole-run ×10 hit count on line 12.
+    dm.applyResults(makeFakeEditor(FILE, calls), resultWith([{
+      file: 'src/Foo.al', lines: [{ line: 12, hits: 10 }], totalStatements: 1, hitStatements: 1,
+      statements: [{ id: 0, scope: 'S', line: 12, column: 5, hits: 10 }],
+    }]), WS);
+    assert.strictEqual(hitCountRanges(calls).length, 1, 'sanity check: the whole-run ×10 was painted');
+
+    // Stepping into the per-iteration view must clear it — a single
+    // iteration's state should never have the whole-run count sitting on top.
+    dm.applyIterationView(
+      makeFakeEditor(FILE, calls),
+      { capturedValues: new Map(), messages: [], linesExecuted: new Set() },
+      [],
+      0,
+    );
+
+    const matches = hitCountCalls(calls);
+    const last = matches[matches.length - 1];
+    assert.strictEqual(
+      last.ranges.length,
+      0,
+      'hitCountDecorationType must be cleared by applyIterationView, else the whole-run ×10 persists over the iteration view',
+    );
+    dm.dispose();
+  });
 });
