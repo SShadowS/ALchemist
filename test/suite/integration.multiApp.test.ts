@@ -19,9 +19,9 @@ suite('Integration — multi-app fixture end-to-end', () => {
     const tree = buildTestTree(model);
     const testAppNode = tree.find(n => n.app.name === 'MainApp.Test');
     assert.ok(testAppNode);
-    assert.strictEqual(testAppNode!.codeunits.length, 1);
+    assert.strictEqual(testAppNode.codeunits.length, 1);
     assert.deepStrictEqual(
-      testAppNode!.codeunits[0].tests.map(t => t.name).sort(),
+      testAppNode.codeunits[0].tests.map(t => t.name).sort(),
       ['ComputeDoubles', 'ComputeZero'],
     );
 
@@ -102,8 +102,8 @@ suite('Integration — multi-app fixture end-to-end', () => {
 
     assert.ok(mainNode, 'MainApp node present');
     assert.ok(testNode, 'MainApp.Test node present');
-    assert.strictEqual(mainNode!.codeunits.length, 0, 'MainApp has no test codeunits');
-    assert.strictEqual(testNode!.codeunits.length, 1, 'MainApp.Test has one test codeunit');
+    assert.strictEqual(mainNode.codeunits.length, 0, 'MainApp has no test codeunits');
+    assert.strictEqual(testNode.codeunits.length, 1, 'MainApp.Test has one test codeunit');
 
     // Save routing still works when workspace roots are separate folders
     const file = path.join(FIX, 'multi-app/MainApp/src/SomeCodeunit.Codeunit.al');

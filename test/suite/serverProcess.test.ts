@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import { EventEmitter, Readable, Writable } from 'stream';
 import * as sinon from 'sinon';
-import { ServerProcess, ServerSpawner } from '../../src/execution/serverProcess';
+import { ServerProcess } from '../../src/execution/serverProcess';
 
 class MockChildProcess extends EventEmitter {
   stdout = new Readable({ read() {} });

@@ -93,7 +93,7 @@ export class IterationTablePanel {
       const isCurrent = i === loop.currentIteration;
 
       // Detect changed values
-      const changedVars = new Set(this.store.getChangedValues(this.currentLoopId!, i));
+      const changedVars = new Set(this.store.getChangedValues(this.currentLoopId, i));
 
       // Build variable cells with overflow handling
       const varCells = varNames.map((name) => {

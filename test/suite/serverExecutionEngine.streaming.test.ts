@@ -23,7 +23,7 @@ suite('ServerExecutionEngine v2 passthrough', () => {
     const stub = new StubProcess({
       type: 'summary', exitCode: 0, passed: 0, failed: 0, errors: 0, total: 0, protocolVersion: 2,
     });
-    const engine = new ServerExecutionEngine(stub as any);
+    const engine = new ServerExecutionEngine(stub);
     const result = await engine.runTests({
       sourcePaths: ['./src'],
       testFilter: { procNames: ['Foo'] },
@@ -37,7 +37,7 @@ suite('ServerExecutionEngine v2 passthrough', () => {
     const stub = new StubProcess({
       type: 'summary', exitCode: 0, passed: 0, failed: 0, errors: 0, total: 0, protocolVersion: 2,
     });
-    const engine = new ServerExecutionEngine(stub as any);
+    const engine = new ServerExecutionEngine(stub);
     await engine.runTests({ sourcePaths: ['./src'], coverage: true });
     assert.strictEqual(stub.lastPayload.coverage, true);
   });
@@ -46,7 +46,7 @@ suite('ServerExecutionEngine v2 passthrough', () => {
     const stub = new StubProcess({
       type: 'summary', exitCode: 0, passed: 0, failed: 0, errors: 0, total: 0, protocolVersion: 2,
     });
-    const engine = new ServerExecutionEngine(stub as any);
+    const engine = new ServerExecutionEngine(stub);
     await engine.runTests({ sourcePaths: ['./src'], cobertura: true });
     assert.strictEqual(stub.lastPayload.cobertura, true);
   });
@@ -58,7 +58,7 @@ suite('ServerExecutionEngine v2 passthrough', () => {
     const stub = new StubProcess({
       type: 'summary', exitCode: 1, passed: 1, failed: 1, errors: 0, total: 2, protocolVersion: 2,
     }, [ev1, ev2]);
-    const engine = new ServerExecutionEngine(stub as any);
+    const engine = new ServerExecutionEngine(stub);
     const seen: TestEvent[] = [];
     const result = await engine.runTests({ sourcePaths: ['./src'] }, (e) => seen.push(e));
     assert.strictEqual(seen.length, 2);
@@ -73,14 +73,14 @@ suite('ServerExecutionEngine v2 passthrough', () => {
     const stub = new StubProcess({
       type: 'summary', exitCode: 0, passed: 1, failed: 0, errors: 0, total: 1, protocolVersion: 2,
     }, [ev]);
-    const engine = new ServerExecutionEngine(stub as any);
+    const engine = new ServerExecutionEngine(stub);
     const result = await engine.runTests({ sourcePaths: ['./src'] }, () => {});
     assert.strictEqual(result.tests[0].status, 'passed');
   });
 
   test('cancel forwards to ServerProcess', async () => {
     const stub = new StubProcess({});
-    const engine = new ServerExecutionEngine(stub as any);
+    const engine = new ServerExecutionEngine(stub);
     await engine.cancel();
     assert.strictEqual(stub.canceled, true);
   });
@@ -90,7 +90,7 @@ suite('ServerExecutionEngine v2 passthrough', () => {
       type: 'summary', exitCode: 0, passed: 0, failed: 0, errors: 0, total: 0,
       cancelled: true, protocolVersion: 2,
     });
-    const engine = new ServerExecutionEngine(stub as any);
+    const engine = new ServerExecutionEngine(stub);
     const result = await engine.runTests({ sourcePaths: ['./src'] });
     assert.strictEqual(result.cancelled, true);
   });
@@ -102,7 +102,7 @@ suite('ServerExecutionEngine v2 passthrough', () => {
                    totalStatements: 1, hitStatements: 1 }],
       protocolVersion: 2,
     });
-    const engine = new ServerExecutionEngine(stub as any);
+    const engine = new ServerExecutionEngine(stub);
     const result = await engine.runTests({ sourcePaths: ['./src'], coverage: true });
     assert.strictEqual(result.coverageV2!.length, 1);
     assert.strictEqual(result.coverageV2![0].file, 'src/Foo.al');
@@ -116,7 +116,7 @@ suite('ServerExecutionEngine v2 passthrough', () => {
       passed: 1, failed: 0, errors: 0, total: 1, exitCode: 0,
     };
     const stub = new StubProcess(v1Response);
-    const engine = new ServerExecutionEngine(stub as any);
+    const engine = new ServerExecutionEngine(stub);
     const result = await engine.runTests({ sourcePaths: ['./src'] });
     assert.strictEqual(result.tests.length, 1);
     assert.strictEqual(result.tests[0].name, 'X');
@@ -135,7 +135,7 @@ suite('ServerExecutionEngine v2 passthrough', () => {
     const stub = new StubProcess({
       type: 'summary', exitCode: 1, passed: 0, failed: 1, errors: 0, total: 1, protocolVersion: 2,
     }, [ev]);
-    const engine = new ServerExecutionEngine(stub as any);
+    const engine = new ServerExecutionEngine(stub);
     const result = await engine.runTests({ sourcePaths: ['./src'] }, () => {});
     const t = result.tests[0];
     assert.strictEqual(t.alSourceFile, 'src/X.al');
@@ -147,7 +147,7 @@ suite('ServerExecutionEngine v2 passthrough', () => {
 
   test('error response without type still maps to failureResult', async () => {
     const stub = new StubProcess({ error: 'sourcePaths is required' });
-    const engine = new ServerExecutionEngine(stub as any);
+    const engine = new ServerExecutionEngine(stub);
     const result = await engine.runTests({ sourcePaths: [] });
     assert.strictEqual(result.tests.length, 0);
     assert.deepStrictEqual(result.stderrOutput, ['sourcePaths is required']);
@@ -161,7 +161,7 @@ suite('ServerExecutionEngine v2 passthrough', () => {
       type: 'summary', error: 'sourcePaths is required',
       exitCode: 2, passed: 0, failed: 0, errors: 0, total: 0, protocolVersion: 2,
     });
-    const engine = new ServerExecutionEngine(stub as any);
+    const engine = new ServerExecutionEngine(stub);
     const result = await engine.runTests({ sourcePaths: [] });
     assert.deepStrictEqual(result.stderrOutput, ['sourcePaths is required']);
     assert.strictEqual(result.tests.length, 0);
@@ -173,7 +173,7 @@ suite('ServerExecutionEngine v2 passthrough', () => {
       tests: [], messages: ['hello'], capturedValues: [],
       iterations: [], exitCode: 0, passed: 0, failed: 0, errors: 0, total: 0,
     });
-    const engine = new ServerExecutionEngine(stub as any);
+    const engine = new ServerExecutionEngine(stub);
     await engine.executeScratch({ inlineCode: 'message(\'hi\');' });
     assert.strictEqual(stub.lastOnEvent, undefined,
       'executeScratch must NOT pass onEvent — scratch is single-response');
@@ -183,7 +183,7 @@ suite('ServerExecutionEngine v2 passthrough', () => {
     const stub = new StubProcess({
       type: 'summary', exitCode: 0, passed: 0, failed: 0, errors: 0, total: 0, protocolVersion: 2,
     });
-    const engine = new ServerExecutionEngine(stub as any);
+    const engine = new ServerExecutionEngine(stub);
     await engine.runTests({
       sourcePaths: ['./src'],
       iterationTracking: true,
@@ -208,7 +208,7 @@ suite('ServerExecutionEngine v2 passthrough', () => {
       coverage: 'not an array',  // intentionally wrong shape
       protocolVersion: 2,
     });
-    const engine = new ServerExecutionEngine(stub as any);
+    const engine = new ServerExecutionEngine(stub);
     const result = await engine.runTests({ sourcePaths: ['./src'], coverage: true });
     assert.strictEqual(result.coverageV2, undefined);
   });
@@ -225,7 +225,7 @@ suite('ServerExecutionEngine v2 passthrough', () => {
     const stub = new StubProcess({
       type: 'summary', exitCode: 0, passed: 2, failed: 0, errors: 0, total: 2, protocolVersion: 2,
     }, [ev1, ev2]);
-    const engine = new ServerExecutionEngine(stub as any);
+    const engine = new ServerExecutionEngine(stub);
     const result = await engine.runTests({ sourcePaths: ['./src'] }, () => {});
     assert.deepStrictEqual(result.messages, ['hello from A', 'second from A', 'from B']);
     // Per-test still works:
@@ -245,7 +245,7 @@ suite('ServerExecutionEngine v2 passthrough', () => {
     const stub = new StubProcess({
       type: 'summary', exitCode: 0, passed: 1, failed: 0, errors: 0, total: 1, protocolVersion: 2,
     }, [ev]);
-    const engine = new ServerExecutionEngine(stub as any);
+    const engine = new ServerExecutionEngine(stub);
     const result = await engine.runTests({ sourcePaths: ['./src'] });
     assert.strictEqual(result.capturedValues.length, 2);
     // v1 shape: sourceFile (from alSourceFile), value as string.
@@ -261,7 +261,7 @@ suite('ServerExecutionEngine v2 passthrough', () => {
     const stub = new StubProcess({
       type: 'summary', exitCode: 0, passed: 1, failed: 0, errors: 0, total: 1, protocolVersion: 2,
     }, [ev]);
-    const engine = new ServerExecutionEngine(stub as any);
+    const engine = new ServerExecutionEngine(stub);
     const result = await engine.runTests({ sourcePaths: ['./src'] });
     assert.deepStrictEqual(result.messages, []);
     assert.deepStrictEqual(result.capturedValues, []);

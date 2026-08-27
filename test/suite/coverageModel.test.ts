@@ -20,7 +20,7 @@ suite('CoverageModel', () => {
 
     const index = model.forFile(path.join(WS, 'src', 'Foo.al'));
     assert.ok(index, 'expected an index for the file');
-    const record = index!.lookup('MyProcedure', 0);
+    const record = index.lookup('MyProcedure', 0);
     assert.strictEqual(record?.line, 12);
     assert.strictEqual(record?.hits, 10);
   });

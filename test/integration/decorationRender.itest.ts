@@ -77,7 +77,7 @@ suite('Integration — inline captured-value rendering through real VS Code APIs
       protocolVersion: 2,
     };
 
-    dm.applyResults(editor as any, v2Result, APP_ROOT);
+    dm.applyResults(editor, v2Result, APP_ROOT);
 
     const captureCalls = calls.filter(c => c.type === captureType);
     assert.ok(
@@ -161,7 +161,7 @@ suite('Integration — inline captured-value rendering through real VS Code APIs
       protocolVersion: 2,
     };
 
-    dm.applyResults(editor as any, v2Result, APP_ROOT);
+    dm.applyResults(editor, v2Result, APP_ROOT);
 
     const captureCalls = calls.filter(c => c.type === captureType);
     const nonEmpty = captureCalls.filter(c => c.ranges.length > 0);
@@ -221,7 +221,7 @@ suite('Integration — inline captured-value rendering through real VS Code APIs
 
     let renderStats: import('../../src/editor/decorations').RenderStats | undefined;
     assert.doesNotThrow(() => {
-      renderStats = dm.applyResults(editor as any, v1Result, APP_ROOT);
+      renderStats = dm.applyResults(editor, v1Result, APP_ROOT);
     }, 'applyResults must not throw for a v1 result with no statement table');
 
     assert.strictEqual(renderStats!.statementsAvailable, false, 'v1 results never carry a statement table');

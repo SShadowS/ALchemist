@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as path from 'path';
 import { WorkspaceModel } from '../../src/workspace/workspaceModel';
-import { planSaveRuns, SaveRunPlan } from '../../src/testing/saveRouting';
+import { planSaveRuns } from '../../src/testing/saveRouting';
 
 const FIX = path.resolve(__dirname, '../../../test/fixtures');
 

@@ -30,7 +30,7 @@ suite('AlRunnerManager.warnIfBelowMinimum', () => {
       get: (key: string, defaultValue?: unknown) => (key in configOverrides ? configOverrides[key] : defaultValue),
     }) as unknown as vscode.WorkspaceConfiguration);
     const realCp: typeof cp = require('child_process');
-    execStub = sandbox.stub(realCp, 'exec') as unknown as sinon.SinonStub;
+    execStub = sandbox.stub(realCp, 'exec');
   });
 
   teardown(() => {
@@ -191,7 +191,7 @@ suite('AlRunnerManager.checkForUpdates — custom path resolution', () => {
       get: (key: string, defaultValue?: unknown) => (key in configOverrides ? configOverrides[key] : defaultValue),
     }) as unknown as vscode.WorkspaceConfiguration);
     const realCp: typeof cp = require('child_process');
-    execStub = sandbox.stub(realCp, 'exec') as unknown as sinon.SinonStub;
+    execStub = sandbox.stub(realCp, 'exec');
   });
 
   teardown(() => {

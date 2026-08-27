@@ -66,14 +66,14 @@ export class CoverageHoverProvider implements vscode.HoverProvider {
     }
     // Fallback: any loop being stepped (for lines outside all loops)
     for (const loop of loops) {
-      if (!this.iterationStore!.isShowingAll(loop.loopId) && loop.currentIteration > 0) {
+      if (!this.iterationStore.isShowingAll(loop.loopId) && loop.currentIteration > 0) {
         return { loopId: loop.loopId, iteration: loop.currentIteration };
       }
     }
     return undefined;
   }
 
-  private buildIterationNavMarkdown(loopId: string, loop: { currentIteration: number; iterationCount: number }): string {
+  private buildIterationNavMarkdown(loopId: string, _loop: { currentIteration: number; iterationCount: number }): string {
     if (this.iterationStore!.isShowingAll(loopId)) {
       return `[\u25C0 Step in](${cmdUri('alchemist.iterationPrev', loopId)}) | ` +
         `[Step in \u25B6](${cmdUri('alchemist.iterationNext', loopId)}) | ` +
@@ -116,7 +116,7 @@ export class CoverageHoverProvider implements vscode.HoverProvider {
 
     // Per-iteration variable value (for hovered word)
     if (hasMatchingVar) {
-      const value = step.capturedValues.get(matchingKey!)!;
+      const value = step.capturedValues.get(matchingKey)!;
       markdown.appendCodeblock(`${matchingKey} = ${value}`, 'al');
     }
 

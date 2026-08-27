@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { EventEmitter, Readable, Writable } from 'stream';
 import * as sinon from 'sinon';
-import { ServerProcess, ServerSpawner } from '../../src/execution/serverProcess';
+import { ServerProcess } from '../../src/execution/serverProcess';
 
 const FIX = path.resolve(__dirname, '../../../test/fixtures');
 

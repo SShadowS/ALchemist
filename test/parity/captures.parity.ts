@@ -32,7 +32,7 @@ function runV1(): Promise<any> {
       try {
         const json = JSON.parse(stdout);
         resolve(json);
-      } catch (e) {
+      } catch (_e) {
         reject(new Error(`v1 stdout not parseable JSON. stderr=${stderr.slice(-200)} stdout=${stdout.slice(0, 200)}`));
       }
     });

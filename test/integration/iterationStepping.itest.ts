@@ -125,7 +125,7 @@ suite('Integration — iteration stepping updates inline values via real VS Code
       store.setIteration(loop.loopId, 2);
       const step = store.getStep(loop.loopId, 2);
       const changedVars = store.getChangedValues(loop.loopId, 2);
-      dm.applyIterationView(editor as any, step, changedVars, /*flashMs*/ 0, {
+      dm.applyIterationView(editor, step, changedVars, /*flashMs*/ 0, {
         start: loop.loopLine,
         end: loop.loopEndLine,
       });
@@ -206,7 +206,7 @@ suite('Integration — iteration stepping updates inline values via real VS Code
       store.setIteration(loop.loopId, 2);
       const step = store.getStep(loop.loopId, 2);
       const changedVars = store.getChangedValues(loop.loopId, 2);
-      dm.applyIterationView(editor as any, step, changedVars, 0, {
+      dm.applyIterationView(editor, step, changedVars, 0, {
         start: loop.loopLine,
         end: loop.loopEndLine,
       });

@@ -24,8 +24,8 @@ suite('ParseCache', () => {
     await cache.initialize();
     const result = cache.parse('/fake/Foo.al', 'codeunit 50000 Foo { trigger OnRun() begin end; }');
     assert.ok(result, 'parse returned undefined');
-    assert.strictEqual(result!.hasErrors, false);
-    assert.ok(result!.ast.rootNode, 'AST root node missing');
+    assert.strictEqual(result.hasErrors, false);
+    assert.ok(result.ast.rootNode, 'AST root node missing');
     cache.dispose();
   });
 
@@ -38,7 +38,7 @@ suite('ParseCache', () => {
 
     const bad = cache.parse('/fake/Foo.al', 'codeunit 50000 Foo { trigger Onun() begin');
     assert.ok(bad);
-    assert.strictEqual(bad!.hasErrors, true);
+    assert.strictEqual(bad.hasErrors, true);
 
     const lastGood = cache.getLastGood('/fake/Foo.al');
     assert.ok(lastGood && !lastGood.hasErrors);
@@ -52,15 +52,15 @@ suite('ParseCache', () => {
     assert.ok(initial);
     const newContent = 'codeunit 50000 Foo { trigger OnRun() begin end; } // edit';
     const updated = cache.parseIncremental('/fake/Foo.al', newContent, {
-      startIndex: initial!.ast.rootNode.endIndex,
-      oldEndIndex: initial!.ast.rootNode.endIndex,
+      startIndex: initial.ast.rootNode.endIndex,
+      oldEndIndex: initial.ast.rootNode.endIndex,
       newEndIndex: newContent.length,
-      startPosition: { row: 0, column: initial!.ast.rootNode.endIndex },
-      oldEndPosition: { row: 0, column: initial!.ast.rootNode.endIndex },
+      startPosition: { row: 0, column: initial.ast.rootNode.endIndex },
+      oldEndPosition: { row: 0, column: initial.ast.rootNode.endIndex },
       newEndPosition: { row: 0, column: newContent.length },
     });
     assert.ok(updated);
-    assert.strictEqual(updated!.hasErrors, false);
+    assert.strictEqual(updated.hasErrors, false);
     cache.dispose();
   });
 

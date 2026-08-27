@@ -85,7 +85,7 @@ export class AlchemistDebugAdapterFactory implements vscode.DebugAdapterDescript
       runnerPath = await this.runnerManager.ensureInstalled();
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      throw new Error(`ALchemist debug: AL.Runner is required to debug AL tests — ${detail}`);
+      throw new Error(`ALchemist debug: AL.Runner is required to debug AL tests — ${detail}`, { cause: err });
     }
 
     const sourcePaths = resolveSourcePaths(

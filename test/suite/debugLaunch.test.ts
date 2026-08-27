@@ -63,7 +63,7 @@ suite('AlchemistTestController — Debug profile', () => {
 
     const debugProfile = profiles.find(p => p.kind === vscode.TestRunProfileKind.Debug);
     assert.ok(debugProfile, 'expected a Debug profile');
-    assert.strictEqual(debugProfile!.label, 'Debug Tests');
+    assert.strictEqual(debugProfile.label, 'Debug Tests');
 
     const runProfile = profiles.find(p => p.kind === vscode.TestRunProfileKind.Run);
     assert.ok(runProfile, 'the Run profile must survive');

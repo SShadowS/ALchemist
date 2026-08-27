@@ -234,8 +234,8 @@ suite('DecorationManager — coverageV2 retires custom gutter', () => {
     const lastUncovered = [...calls].reverse().find(c => c.type === uncovered);
     assert.ok(lastCovered, 'covered decoration type was set');
     assert.ok(lastUncovered, 'uncovered decoration type was set');
-    assert.strictEqual(lastCovered!.ranges.length, 1, 'covered painted for line 1 (hits=3)');
-    assert.strictEqual(lastUncovered!.ranges.length, 1, 'uncovered painted for line 2 (hits=0)');
+    assert.strictEqual(lastCovered.ranges.length, 1, 'covered painted for line 1 (hits=3)');
+    assert.strictEqual(lastUncovered.ranges.length, 1, 'uncovered painted for line 2 (hits=0)');
 
     dm.dispose();
   });
@@ -535,7 +535,7 @@ suite('applyResults — case-insensitive variable lookup (G8 fix)', () => {
       c.type && c.type.options && c.type.options.after,
     );
     const contentTexts = captureCalls.flatMap(c =>
-      (c.ranges as any[]).map(r => r.renderOptions?.after?.contentText as string)
+      (c.ranges).map(r => r.renderOptions?.after?.contentText as string)
     ).filter(Boolean);
 
     assert.ok(
@@ -640,7 +640,7 @@ suite('applyInlineCapturedValues — compact loop rendering', () => {
       c.type && c.type.options && c.type.options.after,
     );
     const contentTexts = captureCalls.flatMap(c =>
-      (c.ranges as any[]).map(r => r.renderOptions?.after?.contentText as string)
+      (c.ranges).map(r => r.renderOptions?.after?.contentText as string)
     ).filter(Boolean);
 
     // Compact-form expected: "myInt = first ‥ last  (×10)"
@@ -688,7 +688,7 @@ suite('applyInlineCapturedValues — compact loop rendering', () => {
       c.type && c.type.options && c.type.options.after,
     );
     const contentTexts = captureCalls.flatMap(c =>
-      (c.ranges as any[]).map(r => r.renderOptions?.after?.contentText as string)
+      (c.ranges).map(r => r.renderOptions?.after?.contentText as string)
     ).filter(Boolean);
 
     assert.ok(
@@ -733,7 +733,7 @@ suite('applyInlineCapturedValues — compact loop rendering', () => {
       c.type && c.type.options && c.type.options.after,
     );
     const contentTexts = captureCalls.flatMap(c =>
-      (c.ranges as any[]).map(r => r.renderOptions?.after?.contentText as string)
+      (c.ranges).map(r => r.renderOptions?.after?.contentText as string)
     ).filter(Boolean);
 
     assert.ok(

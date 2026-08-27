@@ -10,7 +10,11 @@ export async function run(): Promise<void> {
 
   return new Promise<void>((resolve, reject) => {
     mocha.run((failures: number) => {
-      failures > 0 ? reject(new Error(`${failures} parity tests failed.`)) : resolve();
+      if (failures > 0) {
+        reject(new Error(`${failures} parity tests failed.`));
+      } else {
+        resolve();
+      }
     });
   });
 }

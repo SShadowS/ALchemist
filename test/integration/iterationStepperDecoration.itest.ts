@@ -108,7 +108,7 @@ suite('Integration — IterationStepperDecoration paints across visible editors'
       });
       patchedViaDefineProperty = true;
     } catch {
-      (vscode.window as any).visibleTextEditors = wrappedVisible;
+      (vscode.window).visibleTextEditors = wrappedVisible;
     }
 
     let stepperDispose: { dispose(): void } | undefined;
@@ -156,10 +156,10 @@ suite('Integration — IterationStepperDecoration paints across visible editors'
             configurable: true,
           });
         } catch {
-          (vscode.window as any).visibleTextEditors = origVisible;
+          (vscode.window).visibleTextEditors = origVisible;
         }
       } else {
-        (vscode.window as any).visibleTextEditors = origVisible;
+        (vscode.window).visibleTextEditors = origVisible;
       }
     }
   });

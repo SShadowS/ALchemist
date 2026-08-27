@@ -1,5 +1,5 @@
 import { Node as SyntaxNode } from 'web-tree-sitter';
-import { FileSymbols, DeclaredSymbol, ReferencedSymbol, SymbolKind } from './types';
+import { FileSymbols, DeclaredSymbol, SymbolKind } from './types';
 import { ParseResult } from './parseCache';
 
 const KIND_BY_DECL_NODE: Record<string, SymbolKind> = {

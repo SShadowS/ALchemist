@@ -18,7 +18,6 @@ import { registerIterationCommands, findLoopAtCursor } from './iteration/iterati
 import { IterationTablePanel } from './iteration/iterationTablePanel';
 import { findEditorsForLoopSourceFile } from './iteration/iterationViewSync';
 import { WorkspaceModel, bindWorkspaceModelToVsCode, FILE_WATCH_DEBOUNCE_MS } from './workspace/workspaceModel';
-import { planSaveRuns } from './testing/saveRouting';
 import { ParseCache } from './symbols/parseCache';
 import { SymbolIndex, bindSymbolIndexToVsCode } from './symbols/symbolIndex';
 import { TestRouter } from './routing/testRouter';
@@ -175,15 +174,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestHo
     // L1-L4: tree-sitter precision stack (async, non-blocking)
     parseCache = new ParseCache(path.join(context.extensionPath, 'dist'));
     void (async () => {
-      await parseCache!.initialize();
-      if (!parseCache!.isAvailable()) {
+      await parseCache.initialize();
+      if (!parseCache.isAvailable()) {
         outputChannel.appendLine('ALchemist: tree-sitter WASM unavailable; staying on regex tier');
         statusBar.setTier('regex');
         return;
       }
       symbolIndex = new SymbolIndex();
       statusBar.setTier('regex', 'indexing 0/0');
-      await symbolIndex.initialize(workspaceModel, parseCache!, (current, total) => {
+      await symbolIndex.initialize(workspaceModel, parseCache, (current, total) => {
         statusBar.setTier('regex', `indexing ${current}/${total}`);
       });
       if (symbolIndex.isReady()) {
@@ -221,7 +220,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestHo
     });
 
   // Check for updates (non-blocking)
-  runnerManager.checkForUpdates();
+  void runnerManager.checkForUpdates();
 
   // Initial populate of Test Explorer
   await testController.refreshTestsFromModel(workspaceModel);

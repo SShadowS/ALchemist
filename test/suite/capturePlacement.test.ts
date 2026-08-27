@@ -185,7 +185,7 @@ suite('capture placement via statement table', () => {
 
     const model = dm.getCoverageModel();
     assert.ok(model, 'a model should be retained after a run');
-    assert.strictEqual(model!.forFile(FILE)?.lookup('DoWork', 0)?.hits, 4);
+    assert.strictEqual(model.forFile(FILE)?.lookup('DoWork', 0)?.hits, 4);
     dm.dispose();
   });
 

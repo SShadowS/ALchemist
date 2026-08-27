@@ -116,7 +116,7 @@ suite('Save-triggered streaming via runTestsForRequest', () => {
     }
     assert.ok(include, 'fixture must have at least one test-prefixed item');
 
-    const request = new vscode.TestRunRequest([include!], undefined, undefined);
+    const request = new vscode.TestRunRequest([include], undefined, undefined);
     const cts = new vscode.CancellationTokenSource();
     try {
       await controller.runTestsForRequest(request, cts.token);
@@ -144,10 +144,10 @@ suite('Save-triggered streaming via runTestsForRequest', () => {
     const controller = new AlchemistTestController(() => engine, model, () => {});
     await controller.refreshTestsFromModel(model);
 
-    const appItem = controller.getAppTestItem(testApp!.id);
+    const appItem = controller.getAppTestItem(testApp.id);
     assert.ok(appItem, 'getAppTestItem must return the app-<guid> TestItem after refresh');
 
-    const request = new vscode.TestRunRequest([appItem!], undefined, undefined);
+    const request = new vscode.TestRunRequest([appItem], undefined, undefined);
     const cts = new vscode.CancellationTokenSource();
     try {
       await controller.runTestsForRequest(request, cts.token);

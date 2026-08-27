@@ -175,12 +175,11 @@ module.exports = {
   CancellationTokenSource: class CancellationTokenSource {
     constructor() {
       this._listeners = [];
-      const self = this;
       this.token = {
         isCancellationRequested: false,
         onCancellationRequested: (cb) => {
-          self._listeners.push(cb);
-          return { dispose: () => { self._listeners = self._listeners.filter(l => l !== cb); } };
+          this._listeners.push(cb);
+          return { dispose: () => { this._listeners = this._listeners.filter(l => l !== cb); } };
         },
       };
     }

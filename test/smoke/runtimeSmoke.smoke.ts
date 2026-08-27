@@ -105,23 +105,23 @@ suite('Runtime smoke — full extension activation against real ALProject4', fun
     const cu1Loop = result.iterations.find(loop =>
       loop.sourceFile.toLowerCase().endsWith('cu1.al'));
     assert.ok(cu1Loop, `iterations must include a loop in CU1.al; got ${JSON.stringify(result.iterations.map(l => l.sourceFile))}`);
-    assert.strictEqual(cu1Loop!.iterationCount, 10, 'CU1.al for-loop iterates 10 times');
-    assert.strictEqual(cu1Loop!.steps.length, 10, 'all 10 steps recorded');
+    assert.strictEqual(cu1Loop.iterationCount, 10, 'CU1.al for-loop iterates 10 times');
+    assert.strictEqual(cu1Loop.steps.length, 10, 'all 10 steps recorded');
 
     // Plan E4: per-iteration captures must populate now that the runner's
     // FinalizeIteration reads from TestExecutionScope.Current.CapturedValues.
     // Without this, the iteration stepper updates the indicator but the
     // inline values stay blank (Plan E4 user report).
-    const stepsWithCaptures = cu1Loop!.steps.filter(s => s.capturedValues.length > 0);
+    const stepsWithCaptures = cu1Loop.steps.filter(s => s.capturedValues.length > 0);
     assert.ok(
       stepsWithCaptures.length > 0,
       `expected per-iteration captures populated for at least one step in CU1.al; ` +
-      `got ${stepsWithCaptures.length} of ${cu1Loop!.steps.length} steps with captures. ` +
+      `got ${stepsWithCaptures.length} of ${cu1Loop.steps.length} steps with captures. ` +
       `If 0, AL.Runner's IterationTracker.FinalizeIteration regressed (Plan E4).`,
     );
     // CU1.al's `for i := 1 to 10 do myInt += i;` should yield captures
     // for `myInt` on each iteration. Pin a specific iteration for clarity.
-    const step3Captures = cu1Loop!.steps[2].capturedValues;
+    const step3Captures = cu1Loop.steps[2].capturedValues;
     assert.ok(
       step3Captures.some(cv => cv.variableName.toLowerCase() === 'myint'),
       `step[3].capturedValues must include myInt; got ${JSON.stringify(step3Captures.map(cv => cv.variableName))}`,
@@ -177,21 +177,3 @@ suite('Runtime smoke — full extension activation against real ALProject4', fun
     console.log(`[runtime smoke] ${captures.length} captures, ${coverageV2.length} coverage files, ${dmCaptures.length} dm captures — all green`);
   });
 });
-
-/**
- * Poll a producer until it returns a truthy value or the timeout elapses.
- * Returns the value (typed). Throws with the supplied label on timeout.
- */
-async function waitFor<T>(
-  produce: () => T | Promise<T>,
-  timeoutMs: number,
-  label: string,
-): Promise<NonNullable<T>> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const v = await produce();
-    if (v) return v as NonNullable<T>;
-    await new Promise(r => setTimeout(r, 250));
-  }
-  throw new Error(`Timed out after ${timeoutMs}ms waiting for: ${label}`);
-}

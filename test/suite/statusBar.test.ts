@@ -11,7 +11,7 @@ import { ExecutionResult } from '../../src/runner/outputParser';
  * tooltip composition without the real VS Code window.
  */
 function getMainItem(sb: StatusBarManager): { tooltip: string | undefined; text: string } {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const internal = (sb as any).item;
   return internal;
 }
@@ -41,10 +41,10 @@ suite('StatusBarManager — tooltip composition', () => {
       const { tooltip } = getMainItem(sb);
       assert.ok(tooltip, 'tooltip must be set');
       // Base portion
-      assert.ok(tooltip!.includes('ALchemist — Ready') || tooltip!.includes('ALchemist — Ready'),
+      assert.ok(tooltip.includes('ALchemist — Ready') || tooltip.includes('ALchemist — Ready'),
         `expected base text "ALchemist — Ready" in tooltip; got: ${tooltip}`);
       // Default protocol line is v1 (no version reported yet)
-      assert.ok(tooltip!.includes('AL.Runner protocol v1'),
+      assert.ok(tooltip.includes('AL.Runner protocol v1'),
         `expected v1 protocol line; got: ${tooltip}`);
     } finally {
       sb.dispose();
@@ -59,14 +59,14 @@ suite('StatusBarManager — tooltip composition', () => {
       const { tooltip } = getMainItem(sb);
       assert.ok(tooltip, 'tooltip must be set');
       // Base survives
-      assert.ok(tooltip!.includes('123ms'),
+      assert.ok(tooltip.includes('123ms'),
         `expected base text containing 123ms; got: ${tooltip}`);
-      assert.ok(tooltip!.includes('Coverage:'),
+      assert.ok(tooltip.includes('Coverage:'),
         `expected base text containing Coverage:; got: ${tooltip}`);
       // Protocol line is v2
-      assert.ok(tooltip!.includes('AL.Runner protocol v2'),
+      assert.ok(tooltip.includes('AL.Runner protocol v2'),
         `expected v2 protocol line; got: ${tooltip}`);
-      assert.ok(!tooltip!.includes('protocol v1'),
+      assert.ok(!tooltip.includes('protocol v1'),
         `should not show v1 line when v2 is set; got: ${tooltip}`);
     } finally {
       sb.dispose();

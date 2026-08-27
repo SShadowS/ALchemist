@@ -25,7 +25,7 @@ suite('SymbolIndex — initial scan + lookups', () => {
     assert.strictEqual(index.isReady(), true);
     const declarer = index.getDeclarer('ALchemist.Tests.MainAppTest.SomeTestCodeunit');
     assert.ok(declarer, 'expected declarer for SomeTestCodeunit');
-    assert.ok(declarer!.endsWith('SomeTest.Codeunit.al'));
+    assert.ok(declarer.endsWith('SomeTest.Codeunit.al'));
     index.dispose();
   });
 
@@ -264,7 +264,7 @@ suite('SymbolIndex — getTestsAffectedBy', () => {
     const mainFile = path.join(FIX, 'multi-app/MainApp/src/SomeCodeunit.Codeunit.al');
     const affected = index.getTestsAffectedBy(mainFile);
     assert.ok(affected, 'expected non-null');
-    assert.ok(affected!.some(t => t.procName === 'ComputeDoubles'));
+    assert.ok(affected.some(t => t.procName === 'ComputeDoubles'));
     index.dispose();
   });
 
@@ -276,7 +276,7 @@ suite('SymbolIndex — getTestsAffectedBy', () => {
     const testFile = path.join(FIX, 'multi-app/MainApp.Test/src/SomeTest.Codeunit.al');
     const affected = index.getTestsAffectedBy(testFile);
     assert.ok(affected);
-    assert.ok(affected!.some(t => t.procName === 'ComputeDoubles'));
+    assert.ok(affected.some(t => t.procName === 'ComputeDoubles'));
     index.dispose();
   });
 
@@ -353,7 +353,7 @@ suite('SymbolIndex — symbol-index fixture (Sentinel-shaped)', () => {
     const tableFile = path.join(FIX, 'symbol-index/MainApp/src/AlertSESTM.Table.al');
     const affected = index.getTestsAffectedBy(tableFile);
     assert.ok(affected, 'expected non-null');
-    assert.ok(affected!.some(t => t.procName === 'NewReturnsTrue'));
+    assert.ok(affected.some(t => t.procName === 'NewReturnsTrue'));
     index.dispose();
   });
 });

@@ -79,7 +79,7 @@ suite('WorkspaceModel — scan + lookups', () => {
     const file = path.join(FIX, 'multi-app/MainApp/src/SomeCodeunit.Codeunit.al');
     const app = model.getAppContaining(file);
     assert.ok(app, 'should resolve an app');
-    assert.strictEqual(app!.name, 'MainApp');
+    assert.strictEqual(app.name, 'MainApp');
   });
 
   test('getAppContaining returns undefined for file outside any app', async () => {
@@ -526,7 +526,7 @@ suite('bindWorkspaceModelToVsCode', () => {
       // Advance past debounce — no rescan should fire because timer was cleared
       clock.tick(500);
       assert.strictEqual(triggerSpy.callCount, 0, 'dispose() cancels pending rescan');
-      assert.strictEqual((watcher.dispose as sinon.SinonSpy).callCount, 1, 'watcher.dispose called');
+      assert.strictEqual((watcher.dispose).callCount, 1, 'watcher.dispose called');
 
       triggerSpy.restore();
     } finally {

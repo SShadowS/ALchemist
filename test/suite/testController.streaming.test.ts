@@ -147,7 +147,7 @@ suite('TestController streaming (v2)', () => {
     assert.strictEqual(run.failedCalls.length, 1, 'one failed event');
     assert.strictEqual(run.failedCalls[0].duration, 7);
     assert.strictEqual(run.failedCalls[0].item.label, 'ComputeZero');
-    assert.strictEqual((run.failedCalls[0].message as any).message, 'expected 0 got 1');
+    assert.strictEqual((run.failedCalls[0].message).message, 'expected 0 got 1');
 
     assert.strictEqual(run.ended, true, 'run.end() must be called');
   });
@@ -170,9 +170,9 @@ suite('TestController streaming (v2)', () => {
     const item = findTestItem(mockController, 'ComputeDoubles');
     assert.ok(item, 'expected ComputeDoubles test item');
     // Force the id to match the test app guid prefix.
-    assert.ok(item!.id.includes(testApp.id), `item id ${item!.id} should include ${testApp.id}`);
+    assert.ok(item.id.includes(testApp.id), `item id ${item.id} should include ${testApp.id}`);
 
-    const request = new vscode.TestRunRequest([item!]);
+    const request = new vscode.TestRunRequest([item]);
     const tokenSrc = new vscode.CancellationTokenSource();
     await triggerRun(mockController, request, tokenSrc.token);
     assert.strictEqual(engine.callCount, 1, 'only one app should be invoked');
@@ -350,7 +350,7 @@ suite('TestController streaming (v2)', () => {
 
     assert.strictEqual(run.erroredCalls.length, 1);
     assert.strictEqual(run.erroredCalls[0].duration, 4);
-    assert.strictEqual((run.erroredCalls[0].message as any).message, 'compile error');
+    assert.strictEqual((run.erroredCalls[0].message).message, 'compile error');
     assert.strictEqual(run.passedCalls.length, 0);
     assert.strictEqual(run.failedCalls.length, 0);
   });
@@ -592,7 +592,7 @@ suite('TestController streaming (v2)', () => {
 
     assert.strictEqual(run2.passedCalls.length, 0, 'run 2: no passed');
     assert.strictEqual(run2.failedCalls.length, 1, 'run 2: one failed');
-    assert.strictEqual((run2.failedCalls[0].message as any).message, 'second-run failure');
+    assert.strictEqual((run2.failedCalls[0].message).message, 'second-run failure');
     assert.strictEqual(run2.ended, true);
 
     // Sanity: original run1 spy state untouched.

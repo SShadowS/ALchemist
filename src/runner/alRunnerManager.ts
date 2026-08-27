@@ -121,7 +121,7 @@ export class AlRunnerManager {
         vscode.window.showErrorMessage(`Update failed: ${err.message}`);
       } else {
         vscode.window.showInformationMessage('AL.Runner updated successfully.');
-        this.tryFindOnPath().then((p) => { this.resolvedPath = p; });
+        void this.tryFindOnPath().then((p) => { this.resolvedPath = p; });
       }
     });
   }
@@ -173,11 +173,11 @@ export class AlRunnerManager {
               );
               resolve(undefined);
             } else {
-              this.tryFindOnPath().then(resolve);
+              void this.tryFindOnPath().then(resolve);
             }
           });
         } else {
-          this.tryFindOnPath().then(resolve);
+          void this.tryFindOnPath().then(resolve);
         }
       });
     });
@@ -209,7 +209,7 @@ export class AlRunnerManager {
                   vscode.window.showErrorMessage(`Update failed: ${err3.message}`);
                 } else {
                   vscode.window.showInformationMessage('AL.Runner updated successfully.');
-                  this.tryFindOnPath().then((p) => { this.resolvedPath = p; });
+                  void this.tryFindOnPath().then((p) => { this.resolvedPath = p; });
                 }
               });
             }

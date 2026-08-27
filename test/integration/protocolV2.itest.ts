@@ -5,7 +5,7 @@ import * as sinon from 'sinon';
 import { AlchemistTestController } from '../../src/testing/testController';
 import { WorkspaceModel } from '../../src/workspace/workspaceModel';
 import { ExecutionEngine, RunTestsRequest } from '../../src/execution/executionEngine';
-import { ExecutionResult, TestResult } from '../../src/runner/outputParser';
+import { ExecutionResult } from '../../src/runner/outputParser';
 import { TestEvent, FileCoverage } from '../../src/execution/protocolV2Types';
 
 const FIX = path.resolve(__dirname, '../../../test/fixtures');
@@ -68,7 +68,7 @@ class FakeStreamingEngine implements ExecutionEngine {
         stackFrames: e.stackFrames,
         messages: e.messages,
         capturedValues: e.capturedValues as any,
-      })) as TestResult[],
+      })),
       messages: [],
       stderrOutput: [],
       summary: {
@@ -182,18 +182,18 @@ suite('Integration — Plan E2 protocol v2 streaming', () => {
     const failing = events.find(e => e.status === 'fail');
     assert.ok(failing, 'fixture must contain a failing test event');
 
-    assert.ok(failing!.alSourceFile, 'failing event has alSourceFile');
-    assert.ok(typeof failing!.alSourceLine === 'number', 'failing event has alSourceLine');
-    assert.ok(typeof failing!.alSourceColumn === 'number', 'failing event has alSourceColumn');
-    assert.ok(failing!.errorKind, 'failing event has errorKind');
-    assert.ok(failing!.stackFrames, 'failing event has stackFrames');
+    assert.ok(failing.alSourceFile, 'failing event has alSourceFile');
+    assert.ok(typeof failing.alSourceLine === 'number', 'failing event has alSourceLine');
+    assert.ok(typeof failing.alSourceColumn === 'number', 'failing event has alSourceColumn');
+    assert.ok(failing.errorKind, 'failing event has errorKind');
+    assert.ok(failing.stackFrames, 'failing event has stackFrames');
     assert.ok(
-      failing!.stackFrames!.length > 0,
+      failing.stackFrames.length > 0,
       'failing event stackFrames non-empty',
     );
 
     // At least one frame is a user frame (.al filename).
-    const userFrame = failing!.stackFrames!.find(f =>
+    const userFrame = failing.stackFrames.find(f =>
       f.source?.path?.toLowerCase().endsWith('.al'));
     assert.ok(userFrame, 'failing event has a user .al frame');
   });
@@ -261,7 +261,6 @@ suite('Integration — Plan E2 protocol v2 streaming', () => {
   });
 
   test('cursor-driven setActiveTest helper resolves a TestItem in the controller', async () => {
-    const vscode = require('vscode');
     const model = new WorkspaceModel([path.join(FIX, 'multi-app')]);
     await model.scan();
     const engine = new FakeStreamingEngine([], {

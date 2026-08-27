@@ -17,10 +17,10 @@ suite('TestController — buildTestTree (pure)', () => {
     assert.ok(mainAppNode);
     assert.ok(testAppNode);
 
-    assert.strictEqual(mainAppNode!.codeunits.length, 0, 'MainApp has no tests');
-    assert.strictEqual(testAppNode!.codeunits.length, 1, 'MainApp.Test has one test codeunit');
+    assert.strictEqual(mainAppNode.codeunits.length, 0, 'MainApp has no tests');
+    assert.strictEqual(testAppNode.codeunits.length, 1, 'MainApp.Test has one test codeunit');
 
-    const codeunit = testAppNode!.codeunits[0];
+    const codeunit = testAppNode.codeunits[0];
     assert.strictEqual(codeunit.codeunitName, 'SomeTestCodeunit');
     assert.deepStrictEqual(
       codeunit.tests.map(t => t.name).sort(),
@@ -97,7 +97,7 @@ suite('TestController — groupTestItemsByApp', () => {
       { id: `test-${aaa}-50100-Foo` },
       { id: `test-${bbb}-50200-Bar` },
     ];
-    const groups = groupTestItemsByApp(items as any);
+    const groups = groupTestItemsByApp(items);
     assert.strictEqual(groups.size, 2);
     assert.strictEqual(groups.get(aaa)!.length, 3);
     assert.strictEqual(groups.get(bbb)!.length, 1);
@@ -105,14 +105,14 @@ suite('TestController — groupTestItemsByApp', () => {
 
   test('items with unparseable ids land in an empty-id bucket', () => {
     const items = [{ id: 'something-weird' }];
-    const groups = groupTestItemsByApp(items as any);
+    const groups = groupTestItemsByApp(items);
     assert.ok(groups.has(''));
   });
 
   test('non-GUID app id lands in the empty bucket (defensive)', () => {
     // Apps with non-standard ids should not crash the grouper.
     const items = [{ id: 'app-not-a-guid' }];
-    const groups = groupTestItemsByApp(items as any);
+    const groups = groupTestItemsByApp(items);
     assert.ok(groups.has(''));
     assert.strictEqual(groups.get('')!.length, 1);
   });

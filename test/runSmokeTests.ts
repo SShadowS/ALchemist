@@ -16,8 +16,6 @@ import { runTests } from '@vscode/test-electron';
  *  - The smoke test depends on absolute paths to the user's machine; CI
  *    skips it via the existsSync guard inside the suite.
  */
-const ALPROJECT4 = String.raw`C:\Users\SShadowS\Documents\AL\ALProject4`;
-
 async function main(): Promise<void> {
   try {
     const extensionDevelopmentPath = path.resolve(__dirname, '../../');
@@ -43,4 +41,4 @@ async function main(): Promise<void> {
   }
 }
 
-main();
+void main();
