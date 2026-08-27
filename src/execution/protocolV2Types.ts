@@ -69,11 +69,32 @@ export interface FileCoverageLine {
   hits: number;   // SUMMED across statements on the same line, not max-1
 }
 
+/**
+ * One statement from AL.Runner 2.7.0's per-statement coverage table.
+ *
+ * `id` shares an id-space with `CapturedValue.statementId` for the same
+ * `scope`, which is what lets a captured value be placed at an exact
+ * source position instead of being inferred from line ordering.
+ * All positions are 1-based.
+ */
+export interface StatementRecord {
+  id: number;
+  scope: string;
+  line: number;
+  column: number;
+  endLine?: number;
+  endColumn?: number;
+  /** True per-statement count, aggregated across the run. */
+  hits: number;
+}
+
 export interface FileCoverage {
   file: string;                // relative path, forward-slash
   lines: FileCoverageLine[];
   totalStatements: number;
   hitStatements: number;
+  /** AL.Runner >= 2.7.0. Absent on older runners — see MIN_AL_RUNNER_VERSION. */
+  statements?: StatementRecord[];
 }
 
 export interface Summary {
