@@ -65,6 +65,20 @@ export function routeSave(
   return { tier: 'fallback', apps: workspaceModelLocal.getDependents(owning.id), affectedTests: [], reason: 'router not ready' };
 }
 
+/**
+ * Decide whether the "file filter dropped all captures" diagnostic should
+ * fire. It must only fire when a statement table actually existed and the
+ * file filter genuinely dropped every capture — not when there was no table
+ * to begin with (a v1 result, or v2 without AL.Runner >= 2.7.0's
+ * `statements[]`). Without the `statementsAvailable` guard this misdiagnoses
+ * "no table" as a file-filter failure and blames a filter that never ran.
+ */
+export function shouldLogCaptureFilterDrop(
+  stats: Pick<import('./editor/decorations').RenderStats, 'statementsAvailable' | 'captureCount' | 'capturesForActiveFile'>,
+): boolean {
+  return stats.statementsAvailable && stats.captureCount > 0 && stats.capturesForActiveFile === 0;
+}
+
 let runnerManager: AlRunnerManager;
 let serverProcess: ServerProcess | undefined;
 let executionEngine: ExecutionEngine | undefined;
@@ -312,7 +326,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestHo
         ` · coverageMatched=${renderStats.coverageMatched}` +
         ` · painted=${renderStats.inlineDecorationsPainted}`,
       );
-      if (renderStats.captureCount > 0 && renderStats.capturesForActiveFile === 0) {
+      if (shouldLogCaptureFilterDrop(renderStats)) {
         outputChannel.appendLine(`    file filter dropped all. editor=${renderStats.filePath}`);
         outputChannel.appendLine(`    workspacePath=${renderStats.workspacePath}`);
         outputChannel.appendLine(`    sample sourceFile=${renderStats.sampleCaptureSourceFile ?? '<undefined>'}`);

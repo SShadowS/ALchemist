@@ -66,6 +66,7 @@ suite('Integration — inline captured-value rendering through real VS Code APIs
         lines: [{ line: 14, hits: 1 }],
         totalStatements: 1,
         hitStatements: 1,
+        statements: [{ id: 0, scope: 'ComputeDoubles_Scope_1', line: 14, column: 1, hits: 1 }],
       }],
       exitCode: 0,
       durationMs: 1,
@@ -149,6 +150,7 @@ suite('Integration — inline captured-value rendering through real VS Code APIs
         lines: [{ line: 14, hits: 1 }],
         totalStatements: 1,
         hitStatements: 1,
+        statements: [{ id: 0, scope: 'ComputeDoubles_Scope_1', line: 14, column: 1, hits: 1 }],
       }],
       exitCode: 0,
       durationMs: 1,
@@ -165,13 +167,20 @@ suite('Integration — inline captured-value rendering through real VS Code APIs
     assert.ok(
       nonEmpty.length > 0,
       `expected non-empty capture decoration with absolute-path coverage; got ${captureCalls.length} call(s), all empty. ` +
-      'findCoverageForFile must accept the absolute-fwd-slash shape emitted by AL.Runner --server.',
+      'CoverageModel must accept the absolute-fwd-slash shape emitted by AL.Runner --server.',
     );
 
     dm.dispose();
   });
 
-  test('v1 result still renders captures (legacy path stays alive)', async () => {
+  test('v1 result renders no captures (no statement table, no fallback)', async () => {
+    // Spec requires AL.Runner >= 2.7.0 with no fallback rendering path: a
+    // result with no statement table (v1 has none by construction) must
+    // render zero captures rather than placing them by the old line-index
+    // heuristic. This test used to assert the opposite ("v1 path stays
+    // alive") — that contract was deliberately deleted by the spec, and this
+    // test is rewritten (not removed) to record the replacement behavior:
+    // no captures painted, and applyResults must not throw doing it.
     const vscode = require('vscode');
 
     const doc = await vscode.workspace.openTextDocument(AL_FILE);
@@ -209,13 +218,19 @@ suite('Integration — inline captured-value rendering through real VS Code APIs
       iterations: [],
     };
 
-    dm.applyResults(editor as any, v1Result, APP_ROOT);
+    let renderStats: import('../../src/editor/decorations').RenderStats | undefined;
+    assert.doesNotThrow(() => {
+      renderStats = dm.applyResults(editor as any, v1Result, APP_ROOT);
+    }, 'applyResults must not throw for a v1 result with no statement table');
+
+    assert.strictEqual(renderStats!.statementsAvailable, false, 'v1 results never carry a statement table');
 
     const captureCalls = calls.filter(c => c.type === captureType);
     const nonEmpty = captureCalls.filter(c => c.ranges.length > 0);
-    assert.ok(
-      nonEmpty.length > 0,
-      `v1 path must still render captures; got ${captureCalls.length} call(s), all empty`,
+    assert.strictEqual(
+      nonEmpty.length,
+      0,
+      `v1 path must render no captures without a statement table; got ${nonEmpty.length} non-empty call(s)`,
     );
 
     dm.dispose();
