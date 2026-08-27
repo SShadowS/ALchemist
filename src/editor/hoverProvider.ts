@@ -225,7 +225,8 @@ export class CoverageHoverProvider implements vscode.HoverProvider {
       markdown.appendMarkdown(`Hits: ${lineHits}\n`);
 
       // Break the line down only when the rollup hides something: several
-      // statements share the line, or one of them ran repeatedly.
+      // statements share the line. A single statement's Hits line above
+      // already is its own count — a breakdown bullet would just repeat it.
       if (statements.length > 1) {
         markdown.appendMarkdown('\n');
         for (const s of statements) {

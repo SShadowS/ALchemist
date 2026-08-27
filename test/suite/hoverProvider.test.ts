@@ -167,6 +167,7 @@ suite('CoverageHoverProvider — statement breakdown', () => {
     assert.ok(text.includes('col 5–20'), `expected first span, got: ${text}`);
     assert.ok(text.includes('10×'), `expected first count, got: ${text}`);
     assert.ok(text.includes('col 22–40'), `expected second span, got: ${text}`);
+    assert.ok(text.includes('Hits: 10'), `expected rollup to be MAX(10, 1), not SUM, got: ${text}`);
   });
 
   test('single statement hit once renders status without a breakdown list', () => {
