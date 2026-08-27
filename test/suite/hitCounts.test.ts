@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import * as path from 'path';
+import * as vscode from 'vscode';
 import { DecorationManager } from '../../src/editor/decorations';
 import { ExecutionResult } from '../../src/runner/outputParser';
 import { FileCoverage } from '../../src/execution/protocolV2Types';
@@ -32,12 +33,24 @@ function resultWith(coverageV2: FileCoverage[]): ExecutionResult {
   };
 }
 
-/** Ranges painted for the hit-count decoration type. */
-function hitCountRanges(calls: DecorationCall[]): any[] {
-  const call = calls.filter(c =>
+/**
+ * Every `setDecorations` call made against the hit-count decoration type, in
+ * order. `clearDecorations` (unconditional, top of `applyResults`) always
+ * contributes one call; `applyHitCounts`, when it runs at all, contributes a
+ * second. Asserting on this list's length — not just the last call's ranges —
+ * is what distinguishes "ran and painted nothing" from "never ran": both
+ * produce the same empty ranges, but only the former makes two calls.
+ */
+function hitCountCalls(calls: DecorationCall[]): DecorationCall[] {
+  return calls.filter(c =>
     String(c.type?.options?.after?.color?.id ?? '').includes('hitCountForeground'),
-  ).pop();
-  return call?.ranges ?? [];
+  );
+}
+
+/** Ranges from the last call against the hit-count decoration type. */
+function hitCountRanges(calls: DecorationCall[]): any[] {
+  const matches = hitCountCalls(calls);
+  return matches[matches.length - 1]?.ranges ?? [];
 }
 
 suite('hit-count decorations', () => {
@@ -64,7 +77,11 @@ suite('hit-count decorations', () => {
       statements: [{ id: 0, scope: 'S', line: 12, column: 5, hits: 1 }],
     }]), WS);
 
-    assert.strictEqual(hitCountRanges(calls).length, 0);
+    // Two calls (clearDecorations, then applyHitCounts painting nothing)
+    // proves the feature engaged and decided; one call would mean it never ran.
+    const matches = hitCountCalls(calls);
+    assert.strictEqual(matches.length, 2);
+    assert.strictEqual(matches[1].ranges.length, 0);
     dm.dispose();
   });
 
@@ -76,7 +93,9 @@ suite('hit-count decorations', () => {
       statements: [{ id: 0, scope: 'S', line: 12, column: 5, hits: 0 }],
     }]), WS);
 
-    assert.strictEqual(hitCountRanges(calls).length, 0);
+    const matches = hitCountCalls(calls);
+    assert.strictEqual(matches.length, 2);
+    assert.strictEqual(matches[1].ranges.length, 0);
     dm.dispose();
   });
 
@@ -105,7 +124,9 @@ suite('hit-count decorations', () => {
       statements: [{ id: 0, scope: 'S', line: 9999, column: 5, hits: 7 }],
     }]), WS);
 
-    assert.strictEqual(hitCountRanges(calls).length, 0);
+    const matches = hitCountCalls(calls);
+    assert.strictEqual(matches.length, 2);
+    assert.strictEqual(matches[1].ranges.length, 0);
     dm.dispose();
   });
 
@@ -116,7 +137,37 @@ suite('hit-count decorations', () => {
       file: 'src/Foo.al', lines: [{ line: 12, hits: 10 }], totalStatements: 1, hitStatements: 1,
     }]), WS);
 
-    assert.strictEqual(hitCountRanges(calls).length, 0);
+    const matches = hitCountCalls(calls);
+    assert.strictEqual(matches.length, 2);
+    assert.strictEqual(matches[1].ranges.length, 0);
     dm.dispose();
+  });
+
+  test('showHitCounts=false gates the feature off (clear only, no repaint)', () => {
+    const calls: DecorationCall[] = [];
+    const dm = new DecorationManager(__dirname);
+    const originalGetConfiguration = vscode.workspace.getConfiguration;
+    (vscode.workspace as any).getConfiguration = (section?: string) => {
+      if (section === 'alchemist') {
+        return { get: (key: string, defaultValue: any) => (key === 'showHitCounts' ? false : defaultValue) };
+      }
+      return originalGetConfiguration(section);
+    };
+
+    try {
+      dm.applyResults(makeFakeEditor(FILE, calls), resultWith([{
+        file: 'src/Foo.al', lines: [{ line: 12, hits: 10 }], totalStatements: 1, hitStatements: 1,
+        statements: [{ id: 0, scope: 'S', line: 12, column: 5, hits: 10 }],
+      }]), WS);
+
+      // Only clearDecorations' call should land — applyHitCounts must never
+      // be invoked when the setting is off, so there is exactly one call.
+      const matches = hitCountCalls(calls);
+      assert.strictEqual(matches.length, 1);
+      assert.strictEqual(matches[0].ranges.length, 0);
+    } finally {
+      (vscode.workspace as any).getConfiguration = originalGetConfiguration;
+      dm.dispose();
+    }
   });
 });
