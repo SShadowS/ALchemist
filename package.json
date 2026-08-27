@@ -175,9 +175,13 @@
                 "items": { "type": "string" },
                 "description": "Explicit list of source paths (test app plus its dependency apps) to pass to AL.Runner. Overrides bundleDir when set; use this for multi-app workspaces where a single directory is not enough."
               },
+              "program": {
+                "type": "string",
+                "description": "Fallback when bundleDir is not set: a single AL source file whose containing directory becomes the directory AL.Runner debugs. Ignored when bundleDir or sourcePaths is set."
+              },
               "testFilter": {
                 "type": "string",
-                "description": "Optional test name to run under the debugger. Omit to debug the whole suite."
+                "description": "Reserved: the test to run under the debugger. NOT YET VERIFIED against AL.Runner 2.7.0 — per-test selection may be ignored and the whole suite runs regardless; breakpoints do the filtering in the meantime."
               }
             }
           }
