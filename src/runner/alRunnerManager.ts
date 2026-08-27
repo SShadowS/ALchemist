@@ -10,9 +10,16 @@ import * as cp from 'child_process';
  */
 export const MIN_AL_RUNNER_VERSION = '2.7.0';
 
-/** Negative when a < b, 0 when equal, positive when a > b. Pre-release suffixes are ignored. */
+/**
+ * Negative when a < b, 0 when equal, positive when a > b. Pre-release
+ * suffixes are ignored. A version with fewer than three segments is
+ * zero-padded (`'2.7'` compares as `'2.7.0'`) rather than producing NaN.
+ */
 export function compareSemver(a: string, b: string): number {
-  const parts = (v: string) => v.split('-')[0].split('.').map(n => parseInt(n, 10) || 0);
+  const parts = (v: string) => {
+    const [major, minor, patch] = v.split('-')[0].split('.');
+    return [major, minor, patch].map(n => parseInt(n, 10) || 0);
+  };
   const [aMajor, aMinor, aPatch] = parts(a);
   const [bMajor, bMinor, bPatch] = parts(b);
   return (aMajor - bMajor) || (aMinor - bMinor) || (aPatch - bPatch);
@@ -34,7 +41,10 @@ export class AlRunnerManager {
       || '';
     if (configPath) {
       this.resolvedPath = configPath;
-      void this.warnIfBelowMinimum(configPath);
+      // configPath came from the alRunnerPath setting or ALCHEMIST_RUNNER_PATH
+      // (e.g. .vscode/launch.json points this at a local fork build) — either
+      // way the user chose this binary, so no Update button.
+      void this.warnIfBelowMinimum(configPath, /* userConfigured */ true);
       return configPath;
     }
 
@@ -42,7 +52,7 @@ export class AlRunnerManager {
     const pathResult = await this.tryFindOnPath();
     if (pathResult) {
       this.resolvedPath = pathResult;
-      void this.warnIfBelowMinimum(pathResult);
+      void this.warnIfBelowMinimum(pathResult, /* userConfigured */ false);
       return pathResult;
     }
 
@@ -50,7 +60,7 @@ export class AlRunnerManager {
     const installed = await this.installViaDotnet();
     if (installed) {
       this.resolvedPath = installed;
-      void this.warnIfBelowMinimum(installed);
+      void this.warnIfBelowMinimum(installed, /* userConfigured */ false);
       return installed;
     }
 
@@ -66,8 +76,15 @@ export class AlRunnerManager {
    * Best-effort: an unreadable `--version` is not treated as a failure,
    * because the runtime notice in extension.ts still catches a missing
    * statement table.
+   *
+   * `userConfigured` is passed in by the caller rather than re-derived here
+   * from `alchemist.alRunnerPath` — `ensureInstalled` already knows which
+   * branch resolved `runnerPath` (the setting or `ALCHEMIST_RUNNER_PATH` vs.
+   * PATH lookup or a fresh dotnet install), and re-reading just the setting
+   * here previously missed the env-var case, wrongly offering to
+   * `dotnet tool update` a runner the user pointed us at directly.
    */
-  private async warnIfBelowMinimum(runnerPath: string): Promise<void> {
+  private async warnIfBelowMinimum(runnerPath: string, userConfigured: boolean): Promise<void> {
     if (this.warnedVersion) return;
     const stdout = await new Promise<string>((resolve) => {
       cp.exec(`"${runnerPath}" --version`, (err, out) => resolve(err ? '' : out));
@@ -76,11 +93,10 @@ export class AlRunnerManager {
     if (!version || compareSemver(version, MIN_AL_RUNNER_VERSION) >= 0) return;
 
     this.warnedVersion = true;
-    const usingCustomPath = !!vscode.workspace.getConfiguration('alchemist').get<string>('alRunnerPath', '');
     const message =
       `ALchemist requires AL.Runner ${MIN_AL_RUNNER_VERSION} or newer (found ${version}). ` +
       'Inline values, hit counts, and debugging are unavailable until it is updated.';
-    if (usingCustomPath) {
+    if (userConfigured) {
       vscode.window.showWarningMessage(message);
       return;
     }

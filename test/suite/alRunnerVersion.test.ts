@@ -18,6 +18,14 @@ suite('AL.Runner version gate', () => {
     assert.strictEqual(compareSemver('2.7.0-alpha.1', '2.7.0'), 0);
   });
 
+  test('compareSemver zero-pads a version with fewer than three segments instead of producing NaN', () => {
+    assert.strictEqual(compareSemver('2.7', '2.7.0'), 0);
+    assert.ok(!Number.isNaN(compareSemver('2.7', '2.7.0')));
+    assert.ok(!Number.isNaN(compareSemver('2.7.0', '2.7')));
+    assert.ok(compareSemver('2', '2.0.1') < 0, "'2' behaves as '2.0.0'");
+    assert.ok(compareSemver('2.8', '2.7.9') > 0);
+  });
+
   test('parseRunnerVersion pulls the version out of --version output', () => {
     assert.strictEqual(parseRunnerVersion('2.7.0'), '2.7.0');
     assert.strictEqual(parseRunnerVersion('al-runner 2.7.0\n'), '2.7.0');
