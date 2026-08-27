@@ -52,9 +52,11 @@ Each was reviewed and judged non-blocking for that branch. None is a known user-
 - No test asserts `FileStatementIndex.statements`; `byLine` ordering is undefined when two
   statements share both a line and a column.
 
-## Repository hygiene (pre-existing, unrelated to this branch)
+## Repository hygiene
 
-- **`npm run lint` cannot run.** eslint is absent from `node_modules` and from
-  `package.json` devDependencies, and no `.eslintrc*` or `eslint.config.*` exists — only the
-  script line `"lint": "eslint src"` (`package.json:307`). Either add eslint with a
-  flat config, or remove the script so it stops implying a gate that does not exist.
+- ~~**`npm run lint` cannot run.**~~ **Resolved.** ESLint 10 with a type-aware flat config
+  (`eslint.config.mjs`) was added afterwards; `npm run lint` now covers `src` and `test` and
+  exits clean. What remains is the 319 warnings it reports: the `no-unsafe-*` family, firing
+  wherever `any` propagates out of `JSON.parse` and untyped VS Code surfaces. They are
+  deliberately not gated on. Typing the protocol-parsing boundary would retire most of them
+  and is the single highest-value cleanup left in this file.
