@@ -240,55 +240,6 @@ suite('DecorationManager — coverageV2 retires custom gutter', () => {
     dm.dispose();
   });
 
-  test('lossy non-.al sourceFile triggers one-time console.warn', () => {
-    const fakeEditor = {
-      setDecorations: () => {},
-      document: { uri: { fsPath: '/ws/Foo.al' } },
-    } as any;
-    const dm = new DecorationManager(__dirname);
-    const warnings: string[] = [];
-    const origWarn = console.warn;
-    console.warn = (...args: any[]) => { warnings.push(args.join(' ')); };
-    try {
-      const lossy: any[] = [{
-        scopeName: 's', sourceFile: 'Codeunit Foo',
-        variableName: 'x', value: '1', statementId: 0,
-      }];
-      // applyInlineCapturedValues is private; access via cast.
-      (dm as any).applyInlineCapturedValues(fakeEditor, lossy, [], '/ws');
-      (dm as any).applyInlineCapturedValues(fakeEditor, lossy, [], '/ws');
-      const lossyWarnings = warnings.filter(w => w.includes('lossy v2 translation'));
-      assert.strictEqual(lossyWarnings.length, 1,
-        'warning fires exactly once across multiple invocations');
-    } finally {
-      console.warn = origWarn;
-      dm.dispose();
-    }
-  });
-
-  test('proper .al sourceFile does NOT trigger the warning', () => {
-    const fakeEditor = {
-      setDecorations: () => {},
-      document: { uri: { fsPath: '/ws/Foo.al' } },
-    } as any;
-    const dm = new DecorationManager(__dirname);
-    const warnings: string[] = [];
-    const origWarn = console.warn;
-    console.warn = (...args: any[]) => { warnings.push(args.join(' ')); };
-    try {
-      const proper: any[] = [{
-        scopeName: 's', sourceFile: 'src/Foo.al',
-        variableName: 'x', value: '1', statementId: 0,
-      }];
-      (dm as any).applyInlineCapturedValues(fakeEditor, proper, [], '/ws');
-      const lossyWarnings = warnings.filter(w => w.includes('lossy v2 translation'));
-      assert.strictEqual(lossyWarnings.length, 0);
-    } finally {
-      console.warn = origWarn;
-      dm.dispose();
-    }
-  });
-
   test('v2 applyResults with coverageV2 + per-capture alSourceFile renders inline captures (regression for the bug we shipped)', () => {
     // The bug: applyResults passed result.coverage (empty for v2) into
     // applyInlineCapturedValues, which uses it to map statementId→line.
@@ -329,6 +280,10 @@ suite('DecorationManager — coverageV2 retires custom gutter', () => {
           ],
           totalStatements: 2,
           hitStatements: 2,
+          statements: [
+            { id: 0, scope: 's', line: 1, column: 1, hits: 1 },
+            { id: 1, scope: 's', line: 3, column: 1, hits: 1 },
+          ],
         },
       ],
     };
@@ -388,6 +343,10 @@ suite('DecorationManager — coverageV2 retires custom gutter', () => {
           ],
           totalStatements: 2,
           hitStatements: 2,
+          statements: [
+            { id: 0, scope: 's', line: 1, column: 1, hits: 1 },
+            { id: 1, scope: 's', line: 3, column: 1, hits: 1 },
+          ],
         },
       ],
     };
@@ -401,7 +360,7 @@ suite('DecorationManager — coverageV2 retires custom gutter', () => {
     assert.ok(
       nonEmpty.length > 0,
       `expected non-empty capture decoration with absolute-path coverage entries; got ${captureDecorationCalls.length} call(s), all empty. ` +
-      `findCoverageForFile must accept absolute paths emitted by the AL.Runner --server protocol.`,
+      `CoverageModel must accept absolute paths emitted by the AL.Runner --server protocol.`,
     );
 
     dm.dispose();
@@ -451,6 +410,10 @@ suite('DecorationManager — coverageV2 retires custom gutter', () => {
           lines: [{ line: 1, hits: 1 }, { line: 3, hits: 1 }],
           totalStatements: 2,
           hitStatements: 2,
+          statements: [
+            { id: 0, scope: 's', line: 1, column: 1, hits: 1 },
+            { id: 1, scope: 's', line: 3, column: 1, hits: 1 },
+          ],
         },
       ],
     };
@@ -556,6 +519,7 @@ suite('applyResults — case-insensitive variable lookup (G8 fix)', () => {
         file: 'CU1.al',
         lines: [{ line: 1, hits: 1 }],
         totalStatements: 1, hitStatements: 1,
+        statements: [{ id: 0, scope: 's', line: 1, column: 1, hits: 1 }],
       }],
     };
 
@@ -662,6 +626,10 @@ suite('applyInlineCapturedValues — compact loop rendering', () => {
         lines: [{ line: 1, hits: 10 }, { line: 3, hits: 1 }],
         totalStatements: 2,
         hitStatements: 2,
+        statements: [
+          { id: 0, scope: 's', line: 1, column: 1, hits: 10 },
+          { id: 1, scope: 's', line: 3, column: 1, hits: 1 },
+        ],
       }],
     };
 
@@ -710,6 +678,7 @@ suite('applyInlineCapturedValues — compact loop rendering', () => {
         file: 'CU1.al',
         lines: [{ line: 1, hits: 1 }],
         totalStatements: 1, hitStatements: 1,
+        statements: [{ id: 0, scope: 's', line: 1, column: 1, hits: 1 }],
       }],
     };
 
@@ -754,6 +723,7 @@ suite('applyInlineCapturedValues — compact loop rendering', () => {
         file: 'CU1.al',
         lines: [{ line: 1, hits: 2 }],
         totalStatements: 1, hitStatements: 1,
+        statements: [{ id: 0, scope: 's', line: 1, column: 1, hits: 2 }],
       }],
     };
 

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { ExecutionResult, CoverageEntry, CapturedValue } from '../runner/outputParser';
 import { v2ToV1Captured } from '../execution/captureValueAdapter';
+import { CoverageModel } from '../execution/coverageModel';
 
 // Re-export so legacy importers (`import { v2ToV1Captured } from '../editor/decorations'`)
 // keep compiling. New code should import from `../execution/captureValueAdapter`
@@ -17,7 +18,7 @@ export interface RenderStats {
   captureCount: number;
   /** Captures that matched the active editor's file path. */
   capturesForActiveFile: number;
-  /** True when `findCoverageForFile` returned a non-empty entry for the active file. */
+  /** True when the statement-table model has an entry for the active file. */
   coverageMatched: boolean;
   /** Number of inline-decoration ranges painted (== `setDecorations(..., decorations)` length). */
   inlineDecorationsPainted: number;
@@ -27,6 +28,8 @@ export interface RenderStats {
   workspacePath: string;
   /** Sample capture sourceFile (first one), surfaced when the filter dropped everything. */
   sampleCaptureSourceFile?: string;
+  /** True when the run's coverage carried AL.Runner >= 2.7.0 statement records. */
+  statementsAvailable: boolean;
 }
 
 interface InlineRenderStats {
@@ -120,7 +123,9 @@ export class DecorationManager {
   // v1 / save-on-save fallback stores into the LEGACY_SCOPE_KEY union bucket).
   private capturedValuesByTest = new Map<string, CapturedValue[]>();
   private activeTestName?: string;
-  private warnedLossy = false;
+  // Statement index for the most recent run. Undefined until a run with a
+  // statement table lands; consumed by the hover provider via getCoverageModel().
+  private coverageModel: CoverageModel | undefined;
 
   constructor(private readonly extensionPath: string) {
     this.coveredDecorationType = vscode.window.createTextEditorDecorationType({
@@ -199,6 +204,7 @@ export class DecorationManager {
       inlineDecorationsPainted: 0,
       filePath: editor.document.uri.fsPath,
       workspacePath,
+      statementsAvailable: false,
     };
     this.clearDecorations(editor);
 
@@ -253,28 +259,22 @@ export class DecorationManager {
       captured = result.capturedValues;
     }
 
+    // AL.Runner >= 2.7.0 sends a per-statement table; it is the only source of
+    // capture positions. Older runners are refused at install time
+    // (MIN_AL_RUNNER_VERSION) and render no captures rather than guessed ones.
+    this.coverageModel = result.coverageV2
+      ? CoverageModel.fromFileCoverage(result.coverageV2, workspacePath)
+      : undefined;
+    stats.statementsAvailable = this.coverageModel?.hasStatements ?? false;
+
     this.capturedValuesByTest.set(LEGACY_SCOPE_KEY, captured);
     stats.captureCount = captured.length;
-    if (captured.length > 0) {
-      // applyInlineCapturedValues uses per-file coverage line numbers (v1 cobertura
-      // shape) to map each capture's statementId into an editor line. For v2
-      // results, result.coverage is empty (we route v2 to result.coverageV2);
-      // without translating, the filter at line 445 returns undefined and
-      // inline rendering silently no-ops. Translate on-the-fly so the v1
-      // codepath inside applyInlineCapturedValues sees the right shape.
-      const coverageForFilter: CoverageEntry[] = v2CoverageActive
-        ? (result.coverageV2 ?? []).map(fc => ({
-            className: '',
-            filename: fc.file,
-            lineRate: fc.totalStatements > 0 ? fc.hitStatements / fc.totalStatements : 0,
-            lines: fc.lines.map(l => ({ number: l.line, hits: l.hits })),
-          }))
-        : result.coverage;
-      const inlineStats = this.applyInlineCapturedValues(editor, captured, coverageForFilter, workspacePath);
+    if (captured.length > 0 && this.coverageModel !== undefined) {
+      const inlineStats = this.applyInlineCapturedValues(editor, captured, this.coverageModel, workspacePath);
       stats.capturesForActiveFile = inlineStats.capturesForActiveFile;
       stats.coverageMatched = inlineStats.coverageMatched;
       stats.inlineDecorationsPainted = inlineStats.inlineDecorationsPainted;
-      if (inlineStats.capturesForActiveFile === 0 && captured.length > 0) {
+      if (inlineStats.capturesForActiveFile === 0) {
         stats.sampleCaptureSourceFile = captured[0].sourceFile;
       }
     }
@@ -324,6 +324,14 @@ export class DecorationManager {
       for (const cv of arr) { all.push(cv); }
     }
     return all;
+  }
+
+  /**
+   * Statement index for the most recent run, or undefined when none landed.
+   * The hover provider reads positions and hit counts from here.
+   */
+  getCoverageModel(): CoverageModel | undefined {
+    return this.coverageModel;
   }
 
   /**
@@ -486,21 +494,15 @@ export class DecorationManager {
     editor.setDecorations(this.messageDecorationType, messageDecorations);
   }
 
-  private applyInlineCapturedValues(editor: vscode.TextEditor, capturedValues: CapturedValue[], coverage: CoverageEntry[], workspacePath: string): InlineRenderStats {
+  private applyInlineCapturedValues(
+    editor: vscode.TextEditor,
+    capturedValues: CapturedValue[],
+    model: CoverageModel,
+    workspacePath: string,
+  ): InlineRenderStats {
     const stats: InlineRenderStats = { capturesForActiveFile: 0, coverageMatched: false, inlineDecorationsPainted: 0 };
     if (capturedValues.length === 0) return stats;
 
-    // Detect lossy v2-translated values once per session: a sourceFile that
-    // doesn't end .al likely came from objectName fallback in v2ToV1Captured.
-    if (!this.warnedLossy && capturedValues.some(cv => cv.sourceFile && !cv.sourceFile.toLowerCase().endsWith('.al'))) {
-      console.warn(
-        '[ALchemist] Captured values arrived with non-.al sourceFile (likely lossy v2 translation).',
-        'Inline render filter may drop them. See Plan E2.1 task 2 for details.',
-      );
-      this.warnedLossy = true;
-    }
-
-    // Filter captured values to only those belonging to this file
     const filePath = editor.document.uri.fsPath;
     const filePathNorm = path.normalize(filePath).toLowerCase();
     const fileValues = capturedValues.filter(cv => {
@@ -508,68 +510,44 @@ export class DecorationManager {
       const resolved = path.resolve(workspacePath, cv.sourceFile);
       return path.normalize(resolved).toLowerCase() === filePathNorm;
     });
-    if (fileValues.length === 0 && capturedValues.length > 0) {
-      // Diagnostic: log one failed comparison so we can see why every capture
-      // was dropped. This fires only on the cold path where the filter
-      // produced nothing — production-quiet, debug-loud.
-      const sample = capturedValues[0];
-      const sampleResolved = sample.sourceFile ? path.resolve(workspacePath, sample.sourceFile) : '<no sourceFile>';
-      console.warn(
-        '[ALchemist] file filter dropped all captures.',
-        '\n  editor.fsPath        =', filePath,
-        '\n  workspacePath        =', workspacePath,
-        '\n  sample.sourceFile    =', sample.sourceFile,
-        '\n  resolve(ws, src)     =', sampleResolved,
-        '\n  normalize+lower lhs  =', path.normalize(sampleResolved).toLowerCase(),
-        '\n  normalize+lower rhs  =', filePathNorm,
-      );
-    }
     stats.capturesForActiveFile = fileValues.length;
     if (fileValues.length === 0) return stats;
 
-    // Group captured values by (statementId, variable), keeping the FULL ordered
-    // sequence so loops render compactly via formatCaptureGroup. v0.3.0
-    // displayed `myInt = 2 ‥ 56 (×10)`; v0.5.0's port dedup'd to last
-    // value (`myInt = 56`) — that regression is restored here.
-    // Group by lowercase variable name (Plan E5 Group D, G8 fix). AL
-    // is case-insensitive; declaration case may differ from source-text
-    // case. The display uses the original case from cv.variableName,
-    // but the GROUPING key is normalized so two captures with the same
-    // logical variable but different casing don't fragment.
+    const index = model.forFile(filePath);
+    if (!index) return stats;
+    stats.coverageMatched = true;
+
+    // Group by (statementId, lowercased variable), preserving the ordered
+    // series so loops render compactly via formatCaptureGroup. Grouping is
+    // case-normalized because AL identifiers are case-insensitive and the
+    // runner emits declaration case; display keeps the original case.
     const groupedValues = new Map<string, CapturedValue[]>();
     for (const cv of fileValues) {
-      const key = `${cv.statementId}:${cv.variableName.toLowerCase()}`;
+      const key = `${cv.scopeName.toLowerCase()}:${cv.statementId}:${cv.variableName.toLowerCase()}`;
       const arr = groupedValues.get(key) ?? [];
       arr.push(cv);
       groupedValues.set(key, arr);
     }
-    const entry = this.findCoverageForFile(coverage, filePath, workspacePath);
-    if (!entry || entry.lines.length === 0) return stats;
-    stats.coverageMatched = true;
-
-    // statementIds are sequential per scope — map them to coverage line numbers in order
-    const coveredLines = entry.lines
-      .filter(l => l.hits > 0)
-      .sort((a, b) => a.number - b.number);
 
     const decorations: vscode.DecorationOptions[] = [];
-
-    // Captures arrive in execution order from AL.Runner (Pipeline.cs runs
-    // tests sequentially with capture instrumentation injected per
-    // statement). formatCaptureGroup uses values[0] and values[length-1]
-    // as "first" and "last" — that's correct because Map insertion order
-    // (which controls iteration here) preserves the order captures were
-    // pushed, which is execution order.
     for (const [, group] of groupedValues) {
       const head = group[0];
-      // Map statementId to a covered line (best effort: statementId as index into covered lines)
-      if (head.statementId < 0 || head.statementId >= coveredLines.length) continue;
-      const lineNumber = coveredLines[head.statementId].number - 1;
-      if (lineNumber < 0 || lineNumber >= editor.document.lineCount) continue;
+      const record = index.lookup(head.scopeName, head.statementId);
+      if (!record) {
+        // Fail visible-but-quiet: a capture the table does not know about is
+        // dropped rather than placed by inference. One warning per miss keeps
+        // a stale-run mismatch diagnosable without guessing a position.
+        console.warn(
+          `[ALchemist] no statement record for ${head.scopeName}#${head.statementId} in ${filePath}; capture not placed.`,
+        );
+        continue;
+      }
+      const lineIndex = record.line - 1;
+      if (lineIndex < 0 || lineIndex >= editor.document.lineCount) continue;
 
       const display = formatCaptureGroup(group.map(cv => cv.value));
       decorations.push({
-        range: editor.document.lineAt(lineNumber).range,
+        range: editor.document.lineAt(lineIndex).range,
         renderOptions: {
           after: { contentText: `  ${head.variableName} = ${display}` },
         },
