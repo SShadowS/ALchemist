@@ -1,0 +1,122 @@
+import * as assert from 'assert';
+import * as path from 'path';
+import { DecorationManager } from '../../src/editor/decorations';
+import { ExecutionResult } from '../../src/runner/outputParser';
+import { FileCoverage } from '../../src/execution/protocolV2Types';
+
+const WS = path.resolve('/ws');
+const FILE = path.join(WS, 'src', 'Foo.al');
+
+interface DecorationCall { type: any; ranges: any[] }
+
+function makeFakeEditor(fsPath: string, calls: DecorationCall[]): any {
+  return {
+    document: {
+      uri: { fsPath },
+      lineCount: 40,
+      lineAt: (i: number) => ({
+        text: '',
+        range: { start: { line: i, character: 0 }, end: { line: i, character: 10 } },
+      }),
+    },
+    setDecorations: (type: any, ranges: any[]) => { calls.push({ type, ranges }); },
+  };
+}
+
+function resultWith(coverageV2: FileCoverage[]): ExecutionResult {
+  return {
+    mode: 'test', tests: [], messages: [], stderrOutput: [],
+    summary: { passed: 1, failed: 0, errors: 0, total: 1 },
+    coverage: [], exitCode: 0, durationMs: 1, capturedValues: [], cached: false,
+    iterations: [], protocolVersion: 2, coverageV2,
+  };
+}
+
+/** Ranges painted for the hit-count decoration type. */
+function hitCountRanges(calls: DecorationCall[]): any[] {
+  const call = calls.filter(c =>
+    String(c.type?.options?.after?.color?.id ?? '').includes('hitCountForeground'),
+  ).pop();
+  return call?.ranges ?? [];
+}
+
+suite('hit-count decorations', () => {
+  test('renders ×N on a line whose statement ran more than once', () => {
+    const calls: DecorationCall[] = [];
+    const dm = new DecorationManager(__dirname);
+    dm.applyResults(makeFakeEditor(FILE, calls), resultWith([{
+      file: 'src/Foo.al', lines: [{ line: 12, hits: 10 }], totalStatements: 1, hitStatements: 1,
+      statements: [{ id: 0, scope: 'S', line: 12, column: 5, hits: 10 }],
+    }]), WS);
+
+    const ranges = hitCountRanges(calls);
+    assert.strictEqual(ranges.length, 1);
+    assert.strictEqual(ranges[0].range.start.line, 11);
+    assert.strictEqual(ranges[0].renderOptions.after.contentText.trim(), '×10');
+    dm.dispose();
+  });
+
+  test('single-execution lines get no ×N (noise control)', () => {
+    const calls: DecorationCall[] = [];
+    const dm = new DecorationManager(__dirname);
+    dm.applyResults(makeFakeEditor(FILE, calls), resultWith([{
+      file: 'src/Foo.al', lines: [{ line: 12, hits: 1 }], totalStatements: 1, hitStatements: 1,
+      statements: [{ id: 0, scope: 'S', line: 12, column: 5, hits: 1 }],
+    }]), WS);
+
+    assert.strictEqual(hitCountRanges(calls).length, 0);
+    dm.dispose();
+  });
+
+  test('uncovered statements (hits 0) get no ×N', () => {
+    const calls: DecorationCall[] = [];
+    const dm = new DecorationManager(__dirname);
+    dm.applyResults(makeFakeEditor(FILE, calls), resultWith([{
+      file: 'src/Foo.al', lines: [{ line: 12, hits: 0 }], totalStatements: 1, hitStatements: 0,
+      statements: [{ id: 0, scope: 'S', line: 12, column: 5, hits: 0 }],
+    }]), WS);
+
+    assert.strictEqual(hitCountRanges(calls).length, 0);
+    dm.dispose();
+  });
+
+  test('multi-statement line shows the MAX count, never the sum', () => {
+    const calls: DecorationCall[] = [];
+    const dm = new DecorationManager(__dirname);
+    dm.applyResults(makeFakeEditor(FILE, calls), resultWith([{
+      file: 'src/Foo.al', lines: [{ line: 4, hits: 4 }], totalStatements: 2, hitStatements: 2,
+      statements: [
+        { id: 0, scope: 'S', line: 4, column: 5, hits: 3 },
+        { id: 1, scope: 'S', line: 4, column: 22, hits: 1 },
+      ],
+    }]), WS);
+
+    const ranges = hitCountRanges(calls);
+    assert.strictEqual(ranges.length, 1);
+    assert.strictEqual(ranges[0].renderOptions.after.contentText.trim(), '×3');
+    dm.dispose();
+  });
+
+  test('lines past the end of the document are skipped', () => {
+    const calls: DecorationCall[] = [];
+    const dm = new DecorationManager(__dirname);
+    dm.applyResults(makeFakeEditor(FILE, calls), resultWith([{
+      file: 'src/Foo.al', lines: [], totalStatements: 1, hitStatements: 1,
+      statements: [{ id: 0, scope: 'S', line: 9999, column: 5, hits: 7 }],
+    }]), WS);
+
+    assert.strictEqual(hitCountRanges(calls).length, 0);
+    dm.dispose();
+  });
+
+  test('a run with no statement table paints no hit counts', () => {
+    const calls: DecorationCall[] = [];
+    const dm = new DecorationManager(__dirname);
+    dm.applyResults(makeFakeEditor(FILE, calls), resultWith([{
+      file: 'src/Foo.al', lines: [{ line: 12, hits: 10 }], totalStatements: 1, hitStatements: 1,
+    }]), WS);
+
+    assert.strictEqual(hitCountRanges(calls).length, 0);
+    dm.dispose();
+  });
+});

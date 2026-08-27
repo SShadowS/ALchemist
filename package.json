@@ -61,6 +61,16 @@
         }
       },
       {
+        "id": "alchemist.hitCountForeground",
+        "description": "Color for execution counts shown inline after repeated lines.",
+        "defaults": {
+          "dark": "#808080",
+          "light": "#8a8a8a",
+          "highContrast": "#a0a0a0",
+          "highContrastLight": "#6a6a6a"
+        }
+      },
+      {
         "id": "alchemist.errorForeground",
         "description": "Color for error messages shown inline.",
         "defaults": {
@@ -243,7 +253,7 @@
         "alchemist.showHitCounts": {
           "type": "boolean",
           "default": true,
-          "description": "Show hit counts on repeated lines (requires AL.Runner API — Phase 2)."
+          "description": "Show execution counts (×N) after lines that ran more than once. Requires AL.Runner 2.7.0 or newer."
         },
         "alchemist.dimUncoveredLines": {
           "type": "boolean",

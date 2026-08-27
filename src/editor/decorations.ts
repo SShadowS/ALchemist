@@ -115,6 +115,7 @@ export class DecorationManager {
   private readonly messageDecorationType: vscode.TextEditorDecorationType;
   private readonly errorMessageDecorationType: vscode.TextEditorDecorationType;
   private readonly changedValueFlashDecorationType: vscode.TextEditorDecorationType;
+  private readonly hitCountDecorationType: vscode.TextEditorDecorationType;
   private flashTimeout: ReturnType<typeof setTimeout> | undefined;
 
   // Track per-file line coverage for hover provider
@@ -194,6 +195,14 @@ export class DecorationManager {
         backgroundColor: new vscode.ThemeColor('alchemist.changedValueBackground'),
       },
     });
+
+    this.hitCountDecorationType = vscode.window.createTextEditorDecorationType({
+      after: {
+        color: new vscode.ThemeColor('alchemist.hitCountForeground'),
+        margin: '0 0 0 12px',
+        fontStyle: 'italic',
+      },
+    });
   }
 
   applyResults(editor: vscode.TextEditor, result: ExecutionResult, workspacePath: string): RenderStats {
@@ -267,6 +276,10 @@ export class DecorationManager {
       : undefined;
     stats.statementsAvailable = this.coverageModel?.hasStatements ?? false;
 
+    if (config.get<boolean>('showHitCounts', true) && this.coverageModel !== undefined) {
+      this.applyHitCounts(editor, this.coverageModel, filePath);
+    }
+
     this.capturedValuesByTest.set(LEGACY_SCOPE_KEY, captured);
     stats.captureCount = captured.length;
     if (captured.length > 0 && this.coverageModel !== undefined) {
@@ -290,6 +303,7 @@ export class DecorationManager {
     editor.setDecorations(this.messageDecorationType, []);
     editor.setDecorations(this.errorMessageDecorationType, []);
     editor.setDecorations(this.changedValueFlashDecorationType, []);
+    editor.setDecorations(this.hitCountDecorationType, []);
   }
 
   clearAll(): void {
@@ -559,6 +573,31 @@ export class DecorationManager {
     return stats;
   }
 
+  /**
+   * Paint `×N` after every line whose most-executed statement ran more than
+   * once. Applied on every run, not only during a Coverage run, so the count
+   * is visible in the plain editor.
+   *
+   * N is the MAX across the line's statements, not the sum: three statements
+   * on one line each hit once means the line ran once.
+   */
+  private applyHitCounts(editor: vscode.TextEditor, model: CoverageModel, filePath: string): void {
+    const index = model.forFile(filePath);
+    if (!index) { editor.setDecorations(this.hitCountDecorationType, []); return; }
+
+    const decorations: vscode.DecorationOptions[] = [];
+    for (const [line, hits] of index.lineRollup()) {
+      if (hits <= 1) continue;
+      const lineIndex = line - 1;
+      if (lineIndex < 0 || lineIndex >= editor.document.lineCount) continue;
+      decorations.push({
+        range: editor.document.lineAt(lineIndex).range,
+        renderOptions: { after: { contentText: `  ×${hits}` } },
+      });
+    }
+    editor.setDecorations(this.hitCountDecorationType, decorations);
+  }
+
   private findCoverageForFile(coverage: CoverageEntry[], filePath: string, workspacePath: string): CoverageEntry | undefined {
     // Coverage entry filenames arrive in three shapes depending on producer:
     //   1. relative to workspace, fwd slashes  (legacy v1 cobertura)         e.g. "src/Foo.al"
@@ -719,6 +758,7 @@ export class DecorationManager {
     this.messageDecorationType.dispose();
     this.errorMessageDecorationType.dispose();
     this.changedValueFlashDecorationType.dispose();
+    this.hitCountDecorationType.dispose();
     if (this.flashTimeout) {
       clearTimeout(this.flashTimeout);
     }
