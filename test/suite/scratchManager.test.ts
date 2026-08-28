@@ -180,6 +180,25 @@ suite('ScratchManager — bundle directories', () => {
     );
   });
 
+  // AL.Runner 2.7.0 rejects a `.al` file path in sourcePaths with "bundle
+  // directory not found" — the exact bug that shipped. This asserts the
+  // contract against a real on-disk fixture, not just string equality:
+  // the result must be an absolute path to an *existing directory*, never
+  // the scratch file itself.
+  test('getScratchBundleDir returns an absolute, existing directory — not the file itself', () => {
+    const bundleDir = path.join(tmpRoot, 'alchemist-scratch', 'scratch5');
+    fs.mkdirSync(bundleDir, { recursive: true });
+    const filePath = path.join(bundleDir, 'scratch5.al');
+    fs.writeFileSync(filePath, 'codeunit 50000 Scratch {}');
+
+    const result = getScratchBundleDir(filePath);
+
+    assert.ok(path.isAbsolute(result), `expected an absolute path, got ${result}`);
+    assert.ok(!result.endsWith('.al'), `sourcePaths entry must be a directory, not a file: ${result}`);
+    assert.ok(fs.statSync(result).isDirectory(), `expected an existing directory, got ${result}`);
+    assert.strictEqual(result, bundleDir);
+  });
+
   test('newScratchFile creates the file inside its own same-named subdirectory', async () => {
     const manager = new ScratchManager(tmpRoot);
     await manager.newScratchFile(tmpRoot);

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as assert from 'assert';
+import * as fs from 'fs';
 import * as path from 'path';
 import { AlchemistTestController } from '../../src/testing/testController';
 import { ExecutionEngine, RunTestsRequest, ExecuteScratchRequest } from '../../src/execution/executionEngine';
@@ -414,6 +415,38 @@ suite('TestController streaming (v2)', () => {
     assert.ok(Array.isArray(req.sourcePaths) && req.sourcePaths.length > 0);
   });
 
+  // AL.Runner 2.7.0 rejects any sourcePaths entry that is not an existing
+  // directory ("bundle directory not found") — the exact shape of bug that
+  // shipped in scratch mode. "Run All" over the multi-app fixture exercises
+  // both branches of testController.ts's per-app derivation: MainApp has no
+  // dependencies (falls back to `[app.path]`), MainApp.Test depends on
+  // MainApp (`depPaths` has length > 0) — so both must independently hold
+  // up against the real on-disk fixture directories.
+  test('sourcePaths for every per-app run are absolute, existing directories — never a file', async () => {
+    const engine = new StubEngine([[], []], [makeEmpty(), makeEmpty()]);
+    const { mockController } = await makeController(engine);
+
+    const allSourcePaths: string[][] = [];
+    const originalRunTests = engine.runTests.bind(engine);
+    engine.runTests = async (req, onTest) => {
+      allSourcePaths.push(req.sourcePaths.slice());
+      return originalRunTests(req, onTest);
+    };
+
+    const tokenSrc = new vscode.CancellationTokenSource();
+    await triggerRun(mockController, new vscode.TestRunRequest(), tokenSrc.token);
+
+    assert.strictEqual(allSourcePaths.length, 2, 'expected both fixture apps to run');
+    for (const paths of allSourcePaths) {
+      assert.ok(paths.length > 0);
+      for (const p of paths) {
+        assert.ok(path.isAbsolute(p), `expected an absolute path, got ${p}`);
+        assert.ok(!p.endsWith('.al'), `sourcePaths entry must be a directory, not a file: ${p}`);
+        assert.ok(fs.statSync(p).isDirectory(), `expected an existing directory, got ${p}`);
+      }
+    }
+  });
+
   test('setDecorationManager seam exists (used by T10)', async () => {
     const engine = new StubEngine([[]], [makeEmpty()]);
     const { controller } = await makeController(engine);
@@ -825,5 +858,46 @@ suite('TestController streaming (v2)', () => {
     assert.strictEqual(setActiveCalls.length, 1,
       'exactly one setActive call expected for the single test event');
     assert.strictEqual(setActiveCalls[0].args[0], 'ComputeDoubles');
+  });
+});
+
+// The legacy single-folder fallback (no WorkspaceModel passed to the
+// constructor) predates multi-app support but is still reachable — it's
+// exercised whenever the controller is constructed without a model. Same
+// AL.Runner 2.7.0 contract applies: the workspace folder passed as
+// sourcePaths must be an absolute, existing directory.
+suite('AlchemistTestController — legacy single-folder sourcePaths (no WorkspaceModel)', () => {
+  test('falls back to the workspace folder as an absolute, existing directory', async () => {
+    const engine = new StubEngine([[]], [makeEmpty()]);
+    const controller = new AlchemistTestController(() => engine);
+    const mockController = (controller as any).controller;
+
+    const wsFolder = path.join(FIX, 'multi-app', 'MainApp');
+    (vscode as any).workspace.workspaceFolders = [{ uri: { fsPath: wsFolder }, name: 'ws', index: 0 }];
+
+    try {
+      const tokenSrc = new vscode.CancellationTokenSource();
+      await triggerRun(mockController, new vscode.TestRunRequest(), tokenSrc.token);
+
+      const req = engine.lastReq!;
+      assert.deepStrictEqual(req.sourcePaths, [wsFolder]);
+      assert.ok(path.isAbsolute(req.sourcePaths[0]), `expected an absolute path, got ${req.sourcePaths[0]}`);
+      assert.ok(!req.sourcePaths[0].endsWith('.al'), 'sourcePaths entry must be a directory, not a file');
+      assert.ok(fs.statSync(req.sourcePaths[0]).isDirectory(), `expected an existing directory, got ${req.sourcePaths[0]}`);
+    } finally {
+      (vscode as any).workspace.workspaceFolders = [];
+    }
+  });
+
+  test('no workspace folder available → runTests returns without calling the engine', async () => {
+    const engine = new StubEngine([[]], [makeEmpty()]);
+    const controller = new AlchemistTestController(() => engine);
+    const mockController = (controller as any).controller;
+
+    (vscode as any).workspace.workspaceFolders = [];
+    const tokenSrc = new vscode.CancellationTokenSource();
+    await triggerRun(mockController, new vscode.TestRunRequest(), tokenSrc.token);
+
+    assert.strictEqual(engine.callCount, 0, 'engine.runTests must not be invoked with no workspace folder to fall back to');
   });
 });

@@ -1,10 +1,13 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
 import * as path from 'path';
 import {
   AlchemistDebugAdapterFactory,
   resolveSourcePaths,
   ALCHEMIST_DEBUG_TYPE,
 } from '../../src/debug/debugAdapterFactory';
+
+const FIX = path.resolve(__dirname, '../../../test/fixtures');
 
 suite('AlchemistDebugAdapterFactory', () => {
   const RUNNER = path.join('C:', 'tools', 'al-runner.exe');
@@ -112,5 +115,59 @@ suite('resolveSourcePaths', () => {
 
   test('throws when nothing can be resolved', () => {
     assert.throws(() => resolveSourcePaths({}, undefined), /bundleDir/);
+  });
+
+  // AL.Runner 2.7.0 requires every sourcePaths entry to be an *existing
+  // directory* — a `.al` file path is rejected with "bundle directory not
+  // found" (the bug that shipped in scratch mode). The runner also accepts
+  // relative paths, but resolves them against its own cwd rather than the
+  // workspace, so a relative entry would silently point at the wrong place.
+  // These tests pin both requirements against real on-disk fixtures.
+  suite('resolveSourcePaths — directory + absoluteness contract', () => {
+    test('program fallback resolves to the containing directory, not the file itself', () => {
+      const programFile = path.join(FIX, 'multi-app', 'MainApp', 'src', 'SomeCodeunit.Codeunit.al');
+      const resolved = resolveSourcePaths({ program: programFile }, FIX);
+
+      assert.strictEqual(resolved.length, 1);
+      assert.ok(path.isAbsolute(resolved[0]), `expected an absolute path, got ${resolved[0]}`);
+      assert.ok(!resolved[0].endsWith('.al'), `sourcePaths entry must be a directory, not a file: ${resolved[0]}`);
+      assert.ok(fs.statSync(resolved[0]).isDirectory(), `expected an existing directory, got ${resolved[0]}`);
+    });
+
+    test('an explicit absolute sourcePaths list resolves to existing directories', () => {
+      const mainApp = path.join(FIX, 'multi-app', 'MainApp');
+      const testApp = path.join(FIX, 'multi-app', 'MainApp.Test');
+      const resolved = resolveSourcePaths({ sourcePaths: [mainApp, testApp] }, FIX);
+
+      for (const p of resolved) {
+        assert.ok(path.isAbsolute(p), `expected an absolute path, got ${p}`);
+        assert.ok(fs.statSync(p).isDirectory(), `expected an existing directory, got ${p}`);
+      }
+    });
+
+    test('a relative sourcePaths entry resolves against the workspace folder to a real existing directory', () => {
+      // The runner itself would accept 'multi-app/MainApp' as-is and
+      // resolve it against ITS OWN cwd — silently wrong for us. This
+      // proves ALchemist resolves it against the workspace folder instead,
+      // landing on the real fixture directory rather than a path relative
+      // to wherever the test process happens to run from.
+      const resolved = resolveSourcePaths({ sourcePaths: ['multi-app/MainApp', 'multi-app/MainApp.Test'] }, FIX);
+
+      for (const p of resolved) {
+        assert.ok(path.isAbsolute(p), `expected an absolute path, got ${p}`);
+        assert.ok(fs.statSync(p).isDirectory(), `expected an existing directory, got ${p}`);
+      }
+      assert.deepStrictEqual(
+        resolved.sort(),
+        [path.join(FIX, 'multi-app', 'MainApp'), path.join(FIX, 'multi-app', 'MainApp.Test')].sort(),
+      );
+    });
+
+    test('a relative bundleDir fallback also resolves to a real existing directory', () => {
+      const resolved = resolveSourcePaths({ bundleDir: path.join('multi-app', 'MainApp') }, FIX);
+      assert.strictEqual(resolved.length, 1);
+      assert.ok(path.isAbsolute(resolved[0]));
+      assert.ok(fs.statSync(resolved[0]).isDirectory());
+    });
   });
 });

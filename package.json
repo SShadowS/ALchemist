@@ -364,6 +364,7 @@
     "test:integration": "npm run test-compile && node ./out/test/runIntegrationTests.js",
     "test:smoke": "npm run package && npm run test-compile && node ./out/test/runSmokeTests.js",
     "test:parity": "npm run package && npm run test-compile && node ./out/test/runParityTests.js",
+    "test:contract": "npm run test-compile && npx mocha out/test/contract/*.contract.js",
     "test": "npm run test:unit && npm run test:integration && npm run test:parity",
     "lint": "eslint src test",
     "lint:fix": "eslint src test --fix"
