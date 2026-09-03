@@ -1,0 +1,174 @@
+{
+  "exitCode": 0,
+  "tests": [
+    {
+      "name": "Codeunit50390.OnRun",
+      "status": "pass",
+      "durationMs": 25,
+      "capturedValues": [
+        {
+          "scopeName": "OnRun",
+          "variableName": "i",
+          "value": 1,
+          "statementId": 0,
+          "loop": 0,
+          "iteration": 1
+        },
+        {
+          "scopeName": "OnRun",
+          "variableName": "total",
+          "value": 1,
+          "statementId": 1,
+          "loop": 0,
+          "iteration": 1
+        },
+        {
+          "scopeName": "OnRun",
+          "variableName": "i",
+          "value": 2,
+          "statementId": 2,
+          "loop": 0,
+          "iteration": 2
+        },
+        {
+          "scopeName": "OnRun",
+          "variableName": "total",
+          "value": 3,
+          "statementId": 1,
+          "loop": 0,
+          "iteration": 2
+        },
+        {
+          "scopeName": "OnRun",
+          "variableName": "i",
+          "value": 3,
+          "statementId": 2,
+          "loop": 0,
+          "iteration": 3
+        },
+        {
+          "scopeName": "OnRun",
+          "variableName": "total",
+          "value": 6,
+          "statementId": 1,
+          "loop": 0,
+          "iteration": 3
+        }
+      ],
+      "loops": [
+        {
+          "id": 0,
+          "scope": "OnRun",
+          "file": "Loop.Codeunit.al",
+          "line": 8,
+          "column": 9,
+          "endLine": 11,
+          "endColumn": 13,
+          "iterationCount": 3,
+          "closedBy": "exit",
+          "iterations": [
+            {
+              "index": 1,
+              "statements": [
+                1,
+                2
+              ],
+              "lines": [
+                9,
+                10
+              ]
+            },
+            {
+              "index": 2,
+              "statements": [
+                1,
+                2
+              ],
+              "lines": [
+                9,
+                10
+              ]
+            },
+            {
+              "index": 3,
+              "statements": [
+                1,
+                2
+              ],
+              "lines": [
+                9,
+                10
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "text": "sum=1",
+      "scopeName": "OnRun",
+      "statementId": 2,
+      "loop": 0,
+      "iteration": 1
+    },
+    {
+      "text": "sum=3",
+      "scopeName": "OnRun",
+      "statementId": 2,
+      "loop": 0,
+      "iteration": 2
+    },
+    {
+      "text": "sum=6",
+      "scopeName": "OnRun",
+      "statementId": 2,
+      "loop": 0,
+      "iteration": 3
+    }
+  ],
+  "coverage": [
+    {
+      "file": "Loop.Codeunit.al",
+      "statements": [
+        {
+          "id": 0,
+          "scope": "OnRun",
+          "line": 8,
+          "column": 9,
+          "endLine": 11,
+          "endColumn": 13,
+          "hits": 1
+        },
+        {
+          "id": 1,
+          "scope": "OnRun",
+          "line": 9,
+          "column": 13,
+          "endLine": 9,
+          "endColumn": 32,
+          "hits": 3
+        },
+        {
+          "id": 2,
+          "scope": "OnRun",
+          "line": 10,
+          "column": 13,
+          "endLine": 10,
+          "endColumn": 45,
+          "hits": 3
+        },
+        {
+          "id": 3,
+          "scope": "OnRun",
+          "line": 11,
+          "column": 9,
+          "endLine": 11,
+          "endColumn": 12,
+          "hits": 1
+        }
+      ]
+    }
+  ]
+}
