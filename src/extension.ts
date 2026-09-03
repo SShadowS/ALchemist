@@ -736,6 +736,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestHo
     })
   );
 
+  // Rehydrate a table panel that VS Code restored across a window reload/restart.
+  // Without this the restored tab is a dead blank webview (the content lives in
+  // the ephemeral IterationStore, not persisted webview state).
+  context.subscriptions.push(
+    vscode.window.registerWebviewPanelSerializer('alchemistIterationTable', {
+      deserializeWebviewPanel: async (panel) => { iterationTablePanel.restore(panel); },
+    })
+  );
+
   // Iteration stepper — CodeLens for project files, decoration for scratch files
   if (vscode.workspace.getConfiguration('alchemist').get<boolean>('showIterationStepper', true)) {
     // CodeLens works in project files (inside workspace folders)

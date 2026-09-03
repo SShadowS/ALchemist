@@ -22,55 +22,90 @@ export class IterationTablePanel {
     if (this.panel) {
       this.panel.reveal();
     } else {
-      this.panel = vscode.window.createWebviewPanel(
+      this.attach(vscode.window.createWebviewPanel(
         'alchemistIterationTable',
         'ALchemist: Iteration Table',
         vscode.ViewColumn.Beside,
         { enableScripts: true },
-      );
-
-      this.panel.onDidDispose(() => {
-        this.panel = undefined;
-        this.currentLoopId = undefined;
-      }, null, this.disposables);
-
-      this.panel.webview.onDidReceiveMessage((msg) => {
-        if (msg.type === 'selectIteration') {
-          this.store.setIteration(msg.loopId, msg.iteration);
-        } else if (msg.type === 'drillDown') {
-          this.currentLoopId = msg.loopId;
-          this.renderLimit = DEFAULT_RENDER_LIMIT;
-          this.updateContent();
-        } else if (msg.type === 'showAll') {
-          this.renderLimit = Infinity;
-          this.updateContent();
-        }
-      }, null, this.disposables);
-
-      this.disposables.push(
-        this.store.onDidChange(() => {
-          if (this.panel && this.currentLoopId) this.updateContent();
-        })
-      );
+      ));
     }
 
     this.updateContent();
   }
 
+  /**
+   * Adopt a webview panel that VS Code restored after a window reload/restart.
+   *
+   * The table's rows come entirely from the live IterationStore, which is empty
+   * until the next run — so without this, a restored panel is a dead blank tab
+   * (the extension is never asked to repopulate it). We re-wire it and render a
+   * placeholder; the onDidChange subscription in `attach` then repopulates it
+   * automatically once a run loads the store.
+   */
+  restore(panel: vscode.WebviewPanel): void {
+    this.renderLimit = DEFAULT_RENDER_LIMIT;
+    this.currentLoopId = this.store.getLoops()[0]?.loopId;
+    this.attach(panel);
+    this.updateContent();
+  }
+
+  private attach(panel: vscode.WebviewPanel): void {
+    this.panel = panel;
+
+    panel.onDidDispose(() => {
+      this.panel = undefined;
+      this.currentLoopId = undefined;
+    }, null, this.disposables);
+
+    panel.webview.onDidReceiveMessage((msg) => {
+      if (msg.type === 'selectIteration') {
+        this.store.setIteration(msg.loopId, msg.iteration);
+      } else if (msg.type === 'drillDown') {
+        this.currentLoopId = msg.loopId;
+        this.renderLimit = DEFAULT_RENDER_LIMIT;
+        this.updateContent();
+      } else if (msg.type === 'showAll') {
+        this.renderLimit = Infinity;
+        this.updateContent();
+      }
+    }, null, this.disposables);
+
+    this.disposables.push(
+      this.store.onDidChange(() => {
+        if (!this.panel) return;
+        // A restored or freshly-opened-empty panel has no loop yet; adopt the
+        // first loaded loop so the next run repopulates it instead of leaving
+        // it blank.
+        if (!this.currentLoopId) this.currentLoopId = this.store.getLoops()[0]?.loopId;
+        this.updateContent();
+      })
+    );
+  }
+
   private updateContent(): void {
-    if (!this.panel || !this.currentLoopId) return;
+    if (!this.panel) return;
+
+    // No loop selected yet (e.g. a panel restored after a restart, before any
+    // run) — show a placeholder rather than a silent blank tab.
+    if (!this.currentLoopId) {
+      this.renderPlaceholder('Run a loop to populate this table.');
+      return;
+    }
 
     let loop: LoopInfo;
     try {
       loop = this.store.getLoop(this.currentLoopId);
     } catch {
+      // The selected loop is gone (e.g. a later run produced different loops);
+      // fall back to a placeholder instead of leaving stale/blank content.
+      this.renderPlaceholder('Run a loop to populate this table.');
       return;
     }
 
     const nonce = getNonce();
 
     if (loop.iterationCount === 0) {
-      this.panel.webview.html = `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';"></head><body><p>No iteration data available.</p></body></html>`;
+      this.renderPlaceholder('No iteration data available.');
       return;
     }
 
@@ -78,7 +113,7 @@ export class IterationTablePanel {
     try {
       firstStep = this.store.getStep(this.currentLoopId, 1);
     } catch {
-      this.panel.webview.html = `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';"></head><body><p>No iteration data available.</p></body></html>`;
+      this.renderPlaceholder('No iteration data available.');
       return;
     }
     const varNames = Array.from(firstStep.capturedValues.keys());
@@ -340,6 +375,18 @@ export class IterationTablePanel {
   </script>
 </body>
 </html>`;
+  }
+
+  /** Themed single-message body — used for the empty / not-yet-populated states
+   * so the panel never shows a jarring blank white tab. */
+  private renderPlaceholder(message: string): void {
+    if (!this.panel) return;
+    const nonce = getNonce();
+    this.panel.webview.html = `<!DOCTYPE html><html lang="en"><head>` +
+      `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">` +
+      `<style>body{font-family:var(--vscode-editor-font-family,monospace);color:var(--vscode-descriptionForeground);` +
+      `background:var(--vscode-editor-background);padding:16px;margin:0;}</style></head>` +
+      `<body><p>${escapeHtml(message)}</p></body></html>`;
   }
 
   dispose(): void {
