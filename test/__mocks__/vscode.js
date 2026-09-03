@@ -127,6 +127,38 @@ class MockStatusBarItem {
   dispose() { this.disposed = true; }
 }
 
+/**
+ * Spy-friendly OutputChannel. It retains appended lines and records clear,
+ * show, and dispose calls for output formatting tests.
+ */
+class MockOutputChannel {
+  constructor(name) {
+    this.name = name;
+    this.lines = [];
+    this.calls = [];
+    this.clearCalls = 0;
+    this.showCalls = [];
+    this.disposed = false;
+  }
+  appendLine(value) {
+    this.lines.push(value);
+    this.calls.push({ method: 'appendLine', value });
+  }
+  clear() {
+    this.clearCalls++;
+    this.lines = [];
+    this.calls.push({ method: 'clear' });
+  }
+  show(preserveFocus) {
+    this.showCalls.push(preserveFocus);
+    this.calls.push({ method: 'show', value: preserveFocus });
+  }
+  dispose() {
+    this.disposed = true;
+    this.calls.push({ method: 'dispose' });
+  }
+}
+
 module.exports = {
   workspace: {
     openTextDocument: async () => ({}),
@@ -137,6 +169,12 @@ module.exports = {
     }),
   },
   window: {
+    __outputChannels: [],
+    createOutputChannel: (name) => {
+      const channel = new MockOutputChannel(name);
+      module.exports.window.__outputChannels.push(channel);
+      return channel;
+    },
     showTextDocument: async () => ({}),
     showWarningMessage: () => {},
     showInformationMessage: () => {},
