@@ -37,7 +37,7 @@ suite('Iteration Integration', () => {
     assert.strictEqual(store.getLoops().length, 1);
 
     // 3. Step to iteration 2
-    const step2 = store.setIteration('L0', 2);
+    const step2 = store.setIteration('L0', 2)!;
     assert.strictEqual(step2.capturedValues.get('Result'), '20');
     assert.deepStrictEqual(step2.messages, ['small: 20']);
 

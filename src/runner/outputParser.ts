@@ -61,6 +61,11 @@ export interface ExecutionResult {
   cached: boolean;
   iterations: IterationData[];
 
+  /** #2056 upstream: bundle scopes whose loops could not be tracked. */
+  unresolvedScopes?: string[];
+  /** #2056 upstream: retained message records (statementId) for exact placement. */
+  structuredMessages?: import('../execution/protocolV2Types').UpstreamMessage[];
+
   /** v2: true if a runtests request received a cancel mid-stream. */
   cancelled?: boolean;
 

@@ -61,7 +61,7 @@ suite('IterationStore', () => {
   test('setIteration updates currentIteration', () => {
     const store = new IterationStore();
     store.load(makeSingleLoop(), '/ws');
-    const step = store.setIteration('L0', 3);
+    const step = store.setIteration('L0', 3)!;
     assert.strictEqual(step.iteration, 3);
     assert.strictEqual(store.getLoop('L0').currentIteration, 3);
   });
@@ -70,7 +70,7 @@ suite('IterationStore', () => {
     const store = new IterationStore();
     store.load(makeSingleLoop(), '/ws');
     store.setIteration('L0', 2);
-    const step = store.nextIteration('L0');
+    const step = store.nextIteration('L0')!;
     assert.strictEqual(step.iteration, 3);
   });
 
@@ -78,7 +78,7 @@ suite('IterationStore', () => {
     const store = new IterationStore();
     store.load(makeSingleLoop(), '/ws');
     store.setIteration('L0', 5);
-    const step = store.nextIteration('L0');
+    const step = store.nextIteration('L0')!;
     assert.strictEqual(step.iteration, 5);
   });
 
@@ -86,7 +86,7 @@ suite('IterationStore', () => {
     const store = new IterationStore();
     store.load(makeSingleLoop(), '/ws');
     store.setIteration('L0', 3);
-    const step = store.prevIteration('L0');
+    const step = store.prevIteration('L0')!;
     assert.strictEqual(step.iteration, 2);
   });
 
@@ -94,7 +94,7 @@ suite('IterationStore', () => {
     const store = new IterationStore();
     store.load(makeSingleLoop(), '/ws');
     store.setIteration('L0', 1);
-    const step = store.prevIteration('L0');
+    const step = store.prevIteration('L0')!;
     assert.strictEqual(step.iteration, 1);
   });
 
@@ -102,7 +102,7 @@ suite('IterationStore', () => {
     const store = new IterationStore();
     store.load(makeSingleLoop(), '/ws');
     store.showAll('L0');
-    const step = store.nextIteration('L0');
+    const step = store.nextIteration('L0')!;
     assert.strictEqual(step.iteration, 1);
   });
 
@@ -110,7 +110,7 @@ suite('IterationStore', () => {
     const store = new IterationStore();
     store.load(makeSingleLoop(), '/ws');
     store.showAll('L0');
-    const step = store.prevIteration('L0');
+    const step = store.prevIteration('L0')!;
     assert.strictEqual(step.iteration, 5);
   });
 
@@ -118,14 +118,14 @@ suite('IterationStore', () => {
     const store = new IterationStore();
     store.load(makeSingleLoop(), '/ws');
     store.setIteration('L0', 4);
-    const step = store.firstIteration('L0');
+    const step = store.firstIteration('L0')!;
     assert.strictEqual(step.iteration, 1);
   });
 
   test('lastIteration jumps to iterationCount', () => {
     const store = new IterationStore();
     store.load(makeSingleLoop(), '/ws');
-    const step = store.lastIteration('L0');
+    const step = store.lastIteration('L0')!;
     assert.strictEqual(step.iteration, 5);
   });
 
@@ -325,5 +325,43 @@ suite('IterationStore — path resolution', () => {
       'messages must coerce to empty array when wire omits the field');
     assert.deepStrictEqual([...step.linesExecuted], [],
       'linesExecuted must coerce to empty Set when wire omits the array');
+  });
+
+  suite('non-navigable loops (unsegmentable / zero iterations)', () => {
+    function unsegmentable(): IterationData[] {
+      return [{
+        loopId: '0', sourceFile: 'src/X.al', loopLine: 6, loopEndLine: 6,
+        parentLoopId: null, parentIteration: null, iterationCount: 0,
+        unsegmentable: 'emptyBody', closedBy: 'exit', steps: [],
+      }];
+    }
+
+    test('load lists the loop but it is not navigable', () => {
+      const store = new IterationStore();
+      store.load(unsegmentable(), '/ws');
+      assert.strictEqual(store.getLoops().length, 1);
+      assert.strictEqual(store.isNavigable('0'), false);
+      assert.strictEqual(store.getLoop('0').unsegmentable, 'emptyBody');
+    });
+
+    test('stepping a non-navigable loop never throws (the review bug)', () => {
+      const store = new IterationStore();
+      store.load(unsegmentable(), '/ws');
+      assert.doesNotThrow(() => {
+        assert.strictEqual(store.setIteration('0', 1), undefined);
+        assert.strictEqual(store.nextIteration('0'), undefined);
+        assert.strictEqual(store.prevIteration('0'), undefined);
+        assert.strictEqual(store.firstIteration('0'), undefined);
+        assert.strictEqual(store.lastIteration('0'), undefined);
+      });
+    });
+
+    test('a segmentable loop is navigable and steps normally', () => {
+      const store = new IterationStore();
+      store.load(makeSingleLoop(), '/ws');
+      assert.strictEqual(store.isNavigable('L0'), true);
+      assert.ok(store.setIteration('L0', 2));
+      assert.strictEqual(store.getStep('L0', 2).capturedValues.get('i'), '2');
+    });
   });
 });

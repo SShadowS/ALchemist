@@ -23,11 +23,13 @@ export function findLoopAtCursor(loops: LoopInfo[], cursorLine: number): string 
 }
 
 function getTargetLoopId(store: IterationStore, explicitLoopId?: string): string | null {
-  if (explicitLoopId) return explicitLoopId;
+  if (explicitLoopId) return store.isNavigable(explicitLoopId) ? explicitLoopId : null;
   const editor = vscode.window.activeTextEditor;
   if (!editor) return null;
   const cursorLine = editor.selection.active.line + 1; // Convert 0-based to 1-based
-  return findLoopAtCursor(store.getLoops(), cursorLine);
+  // Only navigable loops can be stepped; an unsegmentable loop at the cursor is skipped.
+  const navigable = store.getLoops().filter((l) => store.isNavigable(l.loopId));
+  return findLoopAtCursor(navigable, cursorLine);
 }
 
 export function registerIterationCommands(

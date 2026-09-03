@@ -365,7 +365,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestHo
       const editorFile = vscode.window.activeTextEditor?.document.uri.fsPath;
       const wsPath = (editorFile && workspaceModel.getAppContaining(editorFile)?.path) ?? '';
       iterationStore.load(result.iterations, wsPath);
-      vscode.commands.executeCommand('setContext', 'alchemist.hasIterationData', true);
+      // Enable iteration keybindings/UI only when at least one loop can actually be
+      // stepped; an all-unsegmentable result loads but must not arm navigation.
+      const navigable = iterationStore.getLoops().some(l => iterationStore.isNavigable(l.loopId));
+      vscode.commands.executeCommand('setContext', 'alchemist.hasIterationData', navigable);
       const loops = iterationStore.getLoops().filter(l => l.iterationCount >= 2);
       if (loops.length > 0) {
         statusBar.showIterationStepper(0, loops[0].iterationCount);

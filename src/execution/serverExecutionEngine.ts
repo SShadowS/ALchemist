@@ -2,6 +2,7 @@ import { ExecutionEngine, RunTestsRequest, ExecuteScratchRequest } from './execu
 import { ExecutionResult, TestResult } from '../runner/outputParser';
 import { TestEvent, FileCoverage, ProtocolLine } from './protocolV2Types';
 import { v2ToV1Captured } from './captureValueAdapter';
+import { normalizeExecuteResponse } from './upstreamExecuteNormalizer';
 
 const STATUS_MAP: Record<string, 'passed' | 'failed' | 'errored'> = {
   pass: 'passed',
@@ -167,18 +168,26 @@ export class ServerExecutionEngine implements ExecutionEngine {
         : undefined
     );
 
+    // #2056: normalize whichever iteration wire the runner produced (upstream tagged
+    // shape or the fork's copied steps) into the projections the consumers read.
+    const norm = normalizeExecuteResponse(response);
+    if (norm.conflict) {
+      console.warn('ALchemist: response carried both upstream loops and fork iterations; using upstream.');
+    }
     return {
       mode,
       tests,
-      messages: response.messages ?? [],
+      messages: norm.messages.length > 0 ? norm.messages : (response.messages ?? []),
       stderrOutput: [],
       summary,
       coverage: response.coverage ?? [],
       exitCode: response.exitCode ?? 0,
       durationMs: Date.now() - startTime,
-      capturedValues: response.capturedValues ?? [],
+      capturedValues: norm.capturedValues.length > 0 ? norm.capturedValues : (response.capturedValues ?? []),
       cached: response.cached ?? false,
-      iterations: response.iterations ?? [],
+      iterations: norm.iterations,
+      unresolvedScopes: norm.unresolvedScopes.length > 0 ? norm.unresolvedScopes : undefined,
+      structuredMessages: norm.structuredMessages.length > 0 ? norm.structuredMessages : undefined,
     };
   }
 

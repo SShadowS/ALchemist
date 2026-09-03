@@ -98,4 +98,55 @@ suite('ServerExecutionEngine', () => {
     assert.strictEqual(payload.iterationTracking, true,
       'iterationTracking flag must be forwarded so the runner enables IterationTracker');
   });
+
+  test('executeScratch adapts an UPSTREAM iterations response (tests[].loops + tagged series)', async () => {
+    const response = {
+      exitCode: 0,
+      tests: [{
+        name: 'X.OnRun', status: 'pass',
+        loops: [{ id: 0, scope: 'OnRun', file: 'src/X.al', line: 9, endLine: 12, iterationCount: 2,
+                  closedBy: 'exit', iterations: [
+                    { index: 1, statements: [2], lines: [10] },
+                    { index: 2, statements: [2], lines: [10] }] }],
+        capturedValues: [
+          { scopeName: 'OnRun', variableName: 'i', value: 1, statementId: 1, loop: 0, iteration: 1 },
+          { scopeName: 'OnRun', variableName: 'i', value: 2, statementId: 3, loop: 0, iteration: 2 },
+        ],
+        unresolvedScopes: [],
+      }],
+      messages: [{ text: 'M1', loop: 0, iteration: 1 }],
+    };
+    const sendStub = sinon.stub().resolves(response);
+    const fakeProcess: any = { send: sendStub, dispose: sinon.stub().resolves(), isHealthy: () => true };
+    const eng = new ServerExecutionEngine(fakeProcess);
+    const result = await eng.executeScratch({ inlineCode: 'x', captureValues: true, iterationTracking: true });
+
+    assert.strictEqual(result.iterations.length, 1);
+    assert.strictEqual(result.iterations[0].loopId, '0');
+    assert.strictEqual(result.iterations[0].steps.length, 2);
+    assert.strictEqual(result.iterations[0].steps[0].capturedValues[0].value, '1');
+    assert.deepStrictEqual(result.iterations[0].steps[0].messages, ['M1']);
+    // aggregate legacy projection is rebuilt for show-all consumers
+    assert.strictEqual(result.capturedValues.length, 2);
+    assert.deepStrictEqual(result.messages, ['M1']);
+  });
+
+  test('executeScratch passes through a FORK iterations response unchanged', async () => {
+    const response = {
+      exitCode: 0,
+      tests: [{ name: 'X.OnRun', status: 'pass' }],
+      iterations: [{ loopId: 'L0', sourceFile: 'src/X.al', loopLine: 1, loopEndLine: 1,
+                     parentLoopId: null, parentIteration: null, iterationCount: 1,
+                     steps: [{ iteration: 1, capturedValues: [{ variableName: 'i', value: '1' }], messages: [], linesExecuted: [1] }] }],
+      capturedValues: [{ scopeName: 'OnRun', variableName: 'i', value: '1', statementId: 0 }],
+      messages: ['M'],
+    };
+    const sendStub = sinon.stub().resolves(response);
+    const fakeProcess: any = { send: sendStub, dispose: sinon.stub().resolves(), isHealthy: () => true };
+    const eng = new ServerExecutionEngine(fakeProcess);
+    const result = await eng.executeScratch({ inlineCode: 'x', captureValues: true, iterationTracking: true });
+    assert.strictEqual(result.iterations.length, 1);
+    assert.strictEqual(result.iterations[0].loopId, 'L0');
+    assert.deepStrictEqual(result.messages, ['M']);
+  });
 });

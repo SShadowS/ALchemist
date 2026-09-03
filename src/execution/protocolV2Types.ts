@@ -46,6 +46,44 @@ export interface CapturedValue {
   variableName: string;
   value: unknown;       // schema permits any JSON
   statementId: number;
+  /** #2056 upstream: the loop instance id and 1-based iteration this record
+   * belongs to, absent when produced outside any loop. */
+  loop?: number;
+  iteration?: number;
+  /** #2043 upstream: non-null when the value could not be read/rendered;
+   * value is null and MUST NOT be shown as a genuine null. */
+  captureError?: string;
+}
+
+/** #2056 upstream `execute` wire: one loop instance. Ids are integers unique per response. */
+export interface UpstreamLoop {
+  id: number;
+  scope: string;
+  file: string;
+  line: number;
+  column?: number;
+  endLine: number;
+  endColumn?: number;
+  parentLoop?: number;
+  parentIteration?: number;
+  iterationCount?: number;   // omitted when `unsegmentable` present
+  closedBy?: string;         // exit | scopeExit | unfinished
+  unsegmentable?: string;    // stable code, e.g. emptyBody
+  iterations: UpstreamIteration[];
+}
+
+export interface UpstreamIteration {
+  index: number;             // 1-based
+  statements: number[];      // statement-table id-space
+  lines: number[];           // 1-based
+}
+
+export interface UpstreamMessage {
+  text: string;
+  scopeName?: string;
+  statementId?: number;
+  loop?: number;
+  iteration?: number;
 }
 
 export interface TestEvent {

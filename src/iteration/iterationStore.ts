@@ -32,6 +32,8 @@ export class IterationStore {
         parentLoopId: iter.parentLoopId,
         parentIteration: iter.parentIteration,
         iterationCount: iter.iterationCount,
+        unsegmentable: iter.unsegmentable ?? null,
+        closedBy: iter.closedBy ?? null,
         // Start in "show all" mode (0) — aggregate values are already displayed by applyResults().
         // User steps in via keyboard or CodeLens when they want per-iteration view.
         currentIteration: 0,
@@ -52,6 +54,14 @@ export class IterationStore {
     return { ...entry.info };
   }
 
+  /** True when the loop has at least one iteration to step through. An unsegmentable
+   * or zero-iteration loop is loaded and listed but not navigable, so navigation must
+   * short-circuit instead of throwing on a missing step. */
+  isNavigable(loopId: string): boolean {
+    const entry = this.loops.get(loopId);
+    return entry != null && entry.steps.length > 0;
+  }
+
   getStep(loopId: string, iteration: number): IterationStep {
     const entry = this.loops.get(loopId);
     if (!entry) throw new Error(`Unknown loopId: ${loopId}`);
@@ -64,16 +74,19 @@ export class IterationStore {
     return this.getLoop(loopId).currentIteration;
   }
 
-  setIteration(loopId: string, n: number): IterationStep {
+  setIteration(loopId: string, n: number): IterationStep | undefined {
     const entry = this.loops.get(loopId);
     if (!entry) throw new Error(`Unknown loopId: ${loopId}`);
+    // A non-navigable loop (unsegmentable / zero iterations) has no step to select;
+    // return undefined without firing a change so consumers never read a missing step.
+    if (entry.steps.length === 0) return undefined;
     const clamped = Math.max(1, Math.min(n, entry.info.iterationCount));
     entry.info.currentIteration = clamped;
     this.fire({ loopId, kind: 'iteration-changed' });
     return this.getStep(loopId, clamped);
   }
 
-  nextIteration(loopId: string): IterationStep {
+  nextIteration(loopId: string): IterationStep | undefined {
     const current = this.getCurrentIteration(loopId);
     if (current === 0) {
       // From show-all, go to first iteration
@@ -83,7 +96,7 @@ export class IterationStore {
     return this.setIteration(loopId, Math.min(current + 1, count));
   }
 
-  prevIteration(loopId: string): IterationStep {
+  prevIteration(loopId: string): IterationStep | undefined {
     const current = this.getCurrentIteration(loopId);
     if (current === 0) {
       // From show-all, go to last iteration
@@ -92,11 +105,11 @@ export class IterationStore {
     return this.setIteration(loopId, Math.max(current - 1, 1));
   }
 
-  firstIteration(loopId: string): IterationStep {
+  firstIteration(loopId: string): IterationStep | undefined {
     return this.setIteration(loopId, 1);
   }
 
-  lastIteration(loopId: string): IterationStep {
+  lastIteration(loopId: string): IterationStep | undefined {
     const count = this.getLoop(loopId).iterationCount;
     return this.setIteration(loopId, count);
   }

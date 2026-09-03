@@ -47,21 +47,21 @@ suite('Iteration Display — per-iteration values', () => {
   test('stepping to iteration 7 returns myText = 1234567', () => {
     const store = new IterationStore();
     store.load(makeRealLoopData(), '/ws');
-    const step = store.setIteration('L0', 7);
+    const step = store.setIteration('L0', 7)!;
     assert.strictEqual(step.capturedValues.get('myText'), '1234567');
   });
 
   test('stepping to iteration 1 returns myText = 1', () => {
     const store = new IterationStore();
     store.load(makeRealLoopData(), '/ws');
-    const step = store.setIteration('L0', 1);
+    const step = store.setIteration('L0', 1)!;
     assert.strictEqual(step.capturedValues.get('myText'), '1');
   });
 
   test('stepping to iteration 10 returns myText = 12345678910', () => {
     const store = new IterationStore();
     store.load(makeRealLoopData(), '/ws');
-    const step = store.setIteration('L0', 10);
+    const step = store.setIteration('L0', 10)!;
     assert.strictEqual(step.capturedValues.get('myText'), '12345678910');
   });
 
@@ -111,7 +111,7 @@ suite('Iteration Display — coverage per iteration', () => {
   test('per-iteration linesExecuted used for coverage when stepping', () => {
     const store = new IterationStore();
     store.load(makeRealLoopData(), '/ws');
-    const step = store.setIteration('L0', 5);
+    const step = store.setIteration('L0', 5)!;
 
     // Lines in the loop body should show as executed
     assert.ok(step.linesExecuted.has(10));

@@ -106,6 +106,13 @@ export class AlchemistOutputChannel {
   }
 
   private displayScratchResults(result: ExecutionResult): void {
+    if (result.unresolvedScopes && result.unresolvedScopes.length > 0) {
+      this.channel.appendLine('');
+      this.channel.appendLine('Iteration tracking could not resolve these scopes (their loops are not shown):');
+      for (const scope of result.unresolvedScopes) {
+        this.channel.appendLine(`  ${scope}`);
+      }
+    }
     if (result.messages.length > 0) {
       this.channel.appendLine('  Messages:');
       for (const msg of result.messages) {

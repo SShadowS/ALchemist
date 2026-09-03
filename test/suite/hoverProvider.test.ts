@@ -95,7 +95,7 @@ suite('HoverProvider — iteration-aware', () => {
 
     const expected = ['1', '12', '123', '1234', '12345'];
     for (let i = 1; i <= 5; i++) {
-      const step = store.setIteration('L0', i);
+      const step = store.setIteration('L0', i)!;
       assert.strictEqual(step.capturedValues.get('myText'), expected[i - 1],
         `iteration ${i} should have myText = ${expected[i - 1]}`);
     }
