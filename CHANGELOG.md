@@ -8,7 +8,7 @@
 - Inline execution counts (`×N`) on lines that ran more than once, from AL.Runner 2.7.0's per-statement coverage table.
 - Per-statement hover breakdown showing each statement's column span and its own hit count.
 - Breakpoint debugging of AL tests via AL.Runner's Debug Adapter (`--dap stdio`) — Debug from the Test Explorer or the `ALchemist: Debug AL Tests` launch configuration. Stepping is not yet implemented upstream and behaves like continue.
-- Loop iteration tracking now consumes the upstream AL.Runner iterations wire (StefanMaron/BusinessCentral.AL.Runner#2475), retiring the private runner fork. Values, messages, and executed lines are paired per loop iteration, and the Iteration Table, stepper, hover, and inline decorations all read the upstream shape. Requires the AL.Runner release that ships this wire.
+- Loop iteration tracking now consumes the upstream AL.Runner iterations wire (StefanMaron/BusinessCentral.AL.Runner#2475), retiring the private runner fork. Values, messages, and executed lines are paired per loop iteration, and the Iteration Table, stepper, hover, and inline decorations all read the upstream shape. The wire is merged upstream but is not in a published AL.Runner release yet — until one ships, iteration tracking simply stays inactive and everything else runs normally on AL.Runner 2.7.0 or newer.
 
 ### Changed
 - Captured values are now placed at exact statement positions from the coverage table. The previous heuristic (statement id as an index into covered lines) is gone; it mis-placed values on multi-statement lines.
