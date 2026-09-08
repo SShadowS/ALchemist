@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as sinon from 'sinon';
 import * as cp from 'child_process';
 import * as vscode from 'vscode';
-import { AlRunnerManager } from '../../src/runner/alRunnerManager';
+import { AlRunnerManager, MIN_AL_RUNNER_VERSION } from '../../src/runner/alRunnerManager';
 
 /**
  * Behavioral coverage for `warnIfBelowMinimum`, exercised directly (it's
@@ -53,7 +53,7 @@ suite('AlRunnerManager.warnIfBelowMinimum', () => {
 
     assert.strictEqual(warn.callCount, 1);
     const [message, ...rest] = warn.firstCall.args;
-    assert.ok(message.includes('2.7.0'), 'names the minimum version');
+    assert.ok(message.includes(MIN_AL_RUNNER_VERSION), 'names the minimum version');
     assert.ok(message.includes('2.6.9'), 'names the found version');
     assert.strictEqual(rest.length, 0, 'no action buttons for a user-configured path — we did not install it');
   });
@@ -130,7 +130,7 @@ suite('AlRunnerManager.warnIfBelowMinimum', () => {
   });
 
   test('runner already at the minimum: no warning', async () => {
-    stubVersionOutput('2.7.0');
+    stubVersionOutput(MIN_AL_RUNNER_VERSION);
     const warn = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
 
     const manager = new AlRunnerManager();

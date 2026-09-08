@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## 0.6.1 (2026-09-08)
+
+### Changed
+- Loop iteration tracking is now **active**. 0.6.0 shipped the consumer for the upstream iterations wire, but no published AL.Runner emitted it yet, so tracking stayed dormant. AL.Runner 2.11.0 is the first release carrying it (StefanMaron/BusinessCentral.AL.Runner#2475), so the Iteration Table, stepper, hover, and per-iteration inline values now light up.
+- AL.Runner 2.11.0 is now the minimum supported version.
+
 ## 0.6.0 (2026-09-03)
 
 ### Added

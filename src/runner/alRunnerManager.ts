@@ -8,7 +8,7 @@ import * as cp from 'child_process';
  * the per-statement coverage table (exact inline-value placement and hit
  * counts) and the `--dap stdio` transport used by the debug adapter.
  */
-export const MIN_AL_RUNNER_VERSION = '2.7.0';
+export const MIN_AL_RUNNER_VERSION = '2.11.0';
 
 /**
  * Negative when a < b, 0 when equal, positive when a > b. Pre-release

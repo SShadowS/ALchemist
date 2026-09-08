@@ -2,8 +2,8 @@ import * as assert from 'assert';
 import { compareSemver, parseRunnerVersion, MIN_AL_RUNNER_VERSION } from '../../src/runner/alRunnerManager';
 
 suite('AL.Runner version gate', () => {
-  test('minimum is 2.7.0 — the release that ships the statement table and --dap stdio', () => {
-    assert.strictEqual(MIN_AL_RUNNER_VERSION, '2.7.0');
+  test('minimum is 2.11.0 — the release that ships the loop iterations wire', () => {
+    assert.strictEqual(MIN_AL_RUNNER_VERSION, '2.11.0');
   });
 
   test('compareSemver orders by major, then minor, then patch', () => {
